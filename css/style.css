@@ -1229,7 +1229,7 @@ body {
     max-width: 100%;
   }
 
-  #server-status-badge span#server-status-text {
+  #server-status-badge span {
     display: none;
   }
 
