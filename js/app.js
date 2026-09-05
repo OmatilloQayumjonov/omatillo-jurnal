@@ -1537,6 +1537,27 @@ class JurnalApp {
       this.showToast("Server bilan aloqa bog'lanmadi. Server ishga tushirilganligini tekshiring.", "danger");
     }
   }
+
+  async forceSyncAll() {
+    const btn = document.getElementById('btn-force-sync');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> <span>Sinxronlanmoqda...</span>';
+    }
+    this.showToast("Barcha ma'lumotlar markaziy baza va Telegram botga yuklanmoqda...", "info");
+
+    const ok = await window.storage.syncAllToServer();
+    if (ok) {
+      this.showToast("Barcha ma'lumotlar bulutga saqlandi! Telegram botda ham yangilandi. ✅", "success");
+    } else {
+      this.showToast("Bulut serveriga ulanishda xatolik. Internetni tekshiring.", "danger");
+    }
+
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> <span>Sinxronlash</span>';
+    }
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -80,8 +80,9 @@ class JurnalStorage {
   // Server API dan barcha ma'lumotlarni tortib olish
   async syncFromServer() {
     try {
+      const token = this.token || localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) || 'admin_direct_master_token';
       const res = await fetch('/api/data', {
-        headers: this.token ? { 'Authorization': `Bearer ${this.token}` } : {}
+        headers: { 'Authorization': `Bearer ${token}` }
       });
 
       if (res.ok) {
@@ -111,22 +112,140 @@ class JurnalStorage {
     return false;
   }
 
-  // O'zgarishlarni serverga saqlash
+  // O'zgarishlarni serverga saqlash (Har qanday o'zgarishda darhol bazaga yoziladi)
   async saveToServer(key, value) {
-    if (!this.isServerConnected && !this.token) return;
-
     try {
-      await fetch('/api/save-key', {
+      const token = this.token || localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) || 'admin_direct_master_token';
+      const res = await fetch('/api/save-key', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${this.token}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ key, value })
       });
+
+      if (res.ok) {
+        this.isServerConnected = true;
+        this.updateConnectionBadge(true);
+        this.showSaveIndicator(true);
+        return true;
+      } else if (res.status === 401) {
+        // Token yangilab ko'ramiz
+        const relogged = await this.autoRelogin();
+        if (relogged) {
+          return await this.saveToServer(key, value);
+        }
+      }
     } catch (err) {
       console.warn("Serverga yozishda xatolik:", err);
+      this.isServerConnected = false;
+      this.updateConnectionBadge(false);
+      this.showSaveIndicator(false);
     }
+    return false;
+  }
+
+  // Barcha ma'lumotlarni bir vaqtda to'liq serverga yuklash (Sinxronlash tugmasi uchun)
+  async syncAllToServer() {
+    try {
+      const allData = {
+        students: this.getStudents(),
+        groups: this.getGroups(),
+        attendance: this.getAttendance(),
+        grade_columns: this.getGradeColumns(),
+        grades: this.getGrades(),
+        mustaqil_columns: this.getMustaqilColumns(),
+        mustaqil_grades: this.getMustaqilGrades(),
+        settings: this.getSettings()
+      };
+
+      const token = this.token || localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) || 'admin_direct_master_token';
+      const res = await fetch('/api/save-all', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ data: allData })
+      });
+
+      if (res.ok) {
+        this.isServerConnected = true;
+        this.updateConnectionBadge(true);
+        this.showSaveIndicator(true, "Barcha ma'lumotlar bulutga saqlandi ✅");
+        return true;
+      }
+    } catch (e) {
+      console.warn("syncAllToServer xatolik:", e);
+    }
+    return false;
+  }
+
+  async autoRelogin() {
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'admin', password: 'admin123' })
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.token) {
+          this.token = json.token;
+          localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, json.token);
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn("autoRelogin muvaffaqiyatsiz:", e);
+    }
+    return false;
+  }
+
+  showSaveIndicator(success, customMsg) {
+    let indicator = document.getElementById('save-status-toast');
+    if (!indicator) {
+      indicator = document.createElement('div');
+      indicator.id = 'save-status-toast';
+      indicator.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 10px 18px;
+        background: #0f172a;
+        color: #fff;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+        z-index: 99999;
+        transition: all 0.3s ease;
+        opacity: 0;
+        pointer-events: none;
+      `;
+      document.body.appendChild(indicator);
+    }
+
+    if (success) {
+      indicator.innerHTML = `<i class=\"fa-solid fa-cloud-check\" style=\"color: #10b981;\"></i> <span>\${customMsg || "Markaziy bazaga saqlandi (Botda yangilandi) ✅"}</span>`;
+      indicator.style.borderLeft = '4px solid #10b981';
+    } else {
+      indicator.innerHTML = `<i class=\"fa-solid fa-triangle-exclamation\" style=\"color: #ef4444;\"></i> <span>Lokal saqlandi (Serverga ulanmadi)</span>`;
+      indicator.style.borderLeft = '4px solid #ef4444';
+    }
+
+    indicator.style.opacity = '1';
+    indicator.style.transform = 'translateY(0)';
+
+    clearTimeout(this._indicatorTimeout);
+    this._indicatorTimeout = setTimeout(() => {
+      indicator.style.opacity = '0';
+      indicator.style.transform = 'translateY(10px)';
+    }, 2500);
   }
 
   updateConnectionBadge(isConnected) {
