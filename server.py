@@ -319,6 +319,30 @@ def api_reset_demo():
     seed_default_data()
     return jsonify({'success': True, 'message': "Namunaviy ma'lumotlar tiklandi!"})
 
+@app.route('/api/bot-status', methods=['GET'])
+def api_bot_status():
+    conn = get_db()
+    cur = conn.cursor()
+    admins = []
+    try:
+        cur.execute("SELECT * FROM bot_admins")
+        admins = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        admins = str(e)
+    bindings = []
+    try:
+        cur.execute("SELECT * FROM student_bindings")
+        bindings = [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        bindings = str(e)
+    conn.close()
+    return jsonify({
+        'status': 'ok',
+        'admins': admins,
+        'bindings': bindings,
+        'version': 'v1.3'
+    })
+
 # ==============================================================================
 # STATIC FILES SERVING (Brauzerda saytni ochish)
 # ==============================================================================

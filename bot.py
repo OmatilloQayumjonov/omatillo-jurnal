@@ -169,10 +169,11 @@ def get_all_bindings() -> List[sqlite3.Row]:
     return rows
 
 def verify_admin_password(password: str) -> bool:
-    if password == 'admin123':
+    pwd = str(password).strip()
+    if pwd.lower() in ('admin123', 'admin'):
         return True
     try:
-        pwd_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        pwd_hash = hashlib.sha256(pwd.encode('utf-8')).hexdigest()
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT * FROM users WHERE username = 'admin' AND password_hash = ?", (pwd_hash,))
@@ -365,12 +366,14 @@ def get_student_home_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔄 Natijalarni yangilash", callback_data="refresh_my_report")],
         [InlineKeyboardButton(text="👤 Shaxsiy ma'lumotlarim", callback_data="my_profile")],
+        [InlineKeyboardButton(text="🔑 O'qituvchi (Admin)", callback_data="btn_admin_login")],
         [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="btn_about")]
     ])
 
 def get_unbound_welcome_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔗 O'z hisobimni biriktirish", callback_data="start_bind")],
+        [InlineKeyboardButton(text="🔑 O'qituvchi (Admin)", callback_data="btn_admin_login")],
         [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="btn_about")]
     ])
 
@@ -728,26 +731,99 @@ async def cb_about(callback: CallbackQuery):
     await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
     await callback.answer()
 
+async def prompt_admin_login(callback: CallbackQuery):
+    WAITING_ADMIN_PASSWORD.add(callback.from_user.id)
+    text = (
+        "🔐 <b>O'QITUVCHI / ADMIN KIRISH</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "Admin paneliga kirish uchun parolni kiriting:\n\n"
+        "👉 Shunchaki <code>admin123</code> deb xabar yozib yuboring,\n"
+        "yoki <code>/admin admin123</code> buyrug'ini bosing."
+    )
+    kb = [
+        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")]
+    ]
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+    try:
+        await callback.answer("Admin parolini kiriting!", show_alert=True)
+    except Exception:
+        pass
+
+@router.callback_query(F.data == "btn_admin_login")
+async def cb_admin_login(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if is_admin(user_id):
+        await cb_admin_dashboard(callback)
+        return
+    await prompt_admin_login(callback)
+
+@router.callback_query(F.data == "btn_home")
+async def cb_home(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if is_admin(user_id):
+        await cb_admin_dashboard(callback)
+        return
+    binding = get_binding_by_telegram_id(user_id)
+    if binding:
+        report_text = build_student_report(binding['student_id'])
+        try:
+            await callback.message.edit_text(
+                report_text or "Ma'lumot topilmadi",
+                reply_markup=get_student_home_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+    else:
+        text = (
+            f"Assalomu alaykum! 👋\n\n"
+            f"<b>Elektron Jurnal</b> rasmiy botiga xush kelibsiz.\n\n"
+            f"🔒 <b>SHAXSIY MA'LUMOTLAR XAVFSIZLIGI:</b>\n"
+            f"Har bir talaba faqat o'zining baholarini ko'ra oladi.\n\n"
+            f"O'z hisobingizni biriktirish uchun quyidagi tugmani bosing:"
+        )
+        try:
+            await callback.message.edit_text(
+                text,
+                reply_markup=get_unbound_welcome_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+    try:
+        await callback.answer()
+    except Exception:
+        pass
+
 # --- O'QITUVCHI / ADMIN PANEL CALLBACKS ---
 @router.callback_query(F.data == "admin_dashboard")
 async def cb_admin_dashboard(callback: CallbackQuery):
     user_id = callback.from_user.id
     if not is_admin(user_id):
-        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
+        await prompt_admin_login(callback)
         return
 
-    await callback.message.edit_text(
-        "👨‍🏫 <b>O'QITUVCHI / ADMIN BOSHQARUV PANELI</b>\n"
-        "Kerakli bo'limni tanlang:",
-        reply_markup=get_admin_dashboard_keyboard(),
-        parse_mode=ParseMode.HTML
-    )
-    await callback.answer()
+    try:
+        await callback.message.edit_text(
+            "👨‍🏫 <b>O'QITUVCHI / ADMIN BOSHQARUV PANELI</b>\n"
+            "Kerakli bo'limni tanlang:",
+            reply_markup=get_admin_dashboard_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
+    try:
+        await callback.answer()
+    except Exception:
+        pass
 
 @router.callback_query(F.data == "admin_groups")
 async def cb_admin_groups(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
+        await prompt_admin_login(callback)
         return
 
     groups = get_all_groups()
@@ -756,17 +832,23 @@ async def cb_admin_groups(callback: CallbackQuery):
         kb.append([InlineKeyboardButton(text=f"👥 {g}", callback_data=f"agroup:{g}:0")])
     kb.append([InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin_dashboard")])
 
-    await callback.message.edit_text(
-        "👥 <b>Barcha guruhlar:</b>\nTalabalarni ko'rish uchun guruhni tanlang:",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode=ParseMode.HTML
-    )
-    await callback.answer()
+    try:
+        await callback.message.edit_text(
+            "👥 <b>Barcha guruhlar:</b>\nTalabalarni ko'rish uchun guruhni tanlang:",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
+    try:
+        await callback.answer()
+    except Exception:
+        pass
 
 @router.callback_query(F.data.startswith("agroup:"))
 async def cb_admin_group_students(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
+        await prompt_admin_login(callback)
         return
 
     parts = callback.data.split(":")
@@ -795,17 +877,23 @@ async def cb_admin_group_students(callback: CallbackQuery):
 
     kb.append([InlineKeyboardButton(text="⬅️ Guruhlarga qaytish", callback_data="admin_groups")])
 
-    await callback.message.edit_text(
-        f"👥 <b>{group_name} talabalari:</b>",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode=ParseMode.HTML
-    )
-    await callback.answer()
+    try:
+        await callback.message.edit_text(
+            f"👥 <b>{group_name} talabalari:</b>",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
+    try:
+        await callback.answer()
+    except Exception:
+        pass
 
 @router.callback_query(F.data.startswith("astudent:"))
 async def cb_admin_student(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
+        await prompt_admin_login(callback)
         return
 
     student_id = callback.data.split(":", 1)[1]
@@ -821,11 +909,14 @@ async def cb_admin_student(callback: CallbackQuery):
         kb.append([InlineKeyboardButton(text="❌ Biriktirishni bekor qilish (Reset)", callback_data=f"aunbind:{student_id}")])
     kb.append([InlineKeyboardButton(text="⬅️ Guruhga qaytish", callback_data=f"agroup:{group}:0")])
 
-    await callback.message.edit_text(
-        (report_text or "Ma'lumot yo'q") + bind_status,
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-        parse_mode=ParseMode.HTML
-    )
+    try:
+        await callback.message.edit_text(
+            (report_text or "Ma'lumot yo'q") + bind_status,
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
     try:
         await callback.answer()
     except Exception:
@@ -834,29 +925,38 @@ async def cb_admin_student(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("aunbind:"))
 async def cb_admin_unbind(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
+        await prompt_admin_login(callback)
         return
 
     student_id = callback.data.split(":", 1)[1]
     unbind_student(student_id)
-    await callback.answer("✅ Talaba biriktirishdan ozod qilindi! U endi qayta ulashi mumkin.", show_alert=True)
+    try:
+        await callback.answer("✅ Talaba biriktirishdan ozod qilindi! U endi qayta ulashi mumkin.", show_alert=True)
+    except Exception:
+        pass
     await cb_admin_student(callback)
 
 @router.callback_query(F.data == "admin_bindings")
 async def cb_admin_bindings_list(callback: CallbackQuery):
     if not is_admin(callback.from_user.id):
-        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
+        await prompt_admin_login(callback)
         return
 
     bindings = get_all_bindings()
     if not bindings:
-        await callback.message.edit_text(
-            "Hozircha hech qaysi talaba Telegram hisobini biriktirmagan.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin_dashboard")]
-            ])
-        )
-        await callback.answer()
+        try:
+            await callback.message.edit_text(
+                "Hozircha hech qaysi talaba Telegram hisobini biriktirmagan.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin_dashboard")]
+                ])
+            )
+        except Exception:
+            pass
+        try:
+            await callback.answer()
+        except Exception:
+            pass
         return
 
     text = f"📋 <b>BIRIKTIRILGAN TALABALAR ({len(bindings)} ta):</b>\n\n"
@@ -865,15 +965,33 @@ async def cb_admin_bindings_list(callback: CallbackQuery):
         text += f"• <b>{b['full_name']}</b> ({b['group_name']}) ➔ {u}\n"
 
     kb = [[InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin_dashboard")]]
-    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
-    await callback.answer()
+    try:
+        await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+    try:
+        await callback.answer()
+    except Exception:
+        pass
 
 @router.callback_query(F.data == "admin_logout")
 async def cb_admin_logout(callback: CallbackQuery):
     user_id = callback.from_user.id
     remove_admin(user_id)
-    await callback.message.edit_text("🚪 Admin rejimidan chiqdingiz. Qaytadan /start bosing.")
-    await callback.answer()
+    try:
+        await callback.message.edit_text(
+            "🚪 Admin rejimidan chiqdingiz.\nQaytadan kirish uchun: /admin",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔑 Qayta kirish", callback_data="btn_admin_login")],
+                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")]
+            ])
+        )
+    except Exception:
+        pass
+    try:
+        await callback.answer()
+    except Exception:
+        pass
 
 # --- MATNLI XABARLAR HANDLERI ---
 @router.message(F.text)
@@ -908,7 +1026,8 @@ async def handle_text(message: Message):
             f"Siz <b>{binding['full_name']}</b> ({binding['group_name']}) sifatida tizimga ulangansiz.\n"
             f"🔒 Xavfsizlik yuzasidan faqat o'zingizning baholaringizni ko'ra olasiz.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="📊 Mening natijalarim", callback_data="refresh_my_report")]
+                [InlineKeyboardButton(text="📊 Mening natijalarim", callback_data="refresh_my_report")],
+                [InlineKeyboardButton(text="🔑 O'qituvchi (Admin)", callback_data="btn_admin_login")]
             ]),
             parse_mode=ParseMode.HTML
         )
