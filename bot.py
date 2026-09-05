@@ -67,6 +67,13 @@ def init_bot_db():
             created_at TEXT NOT NULL
         )
     ''')
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS bot_admins (
+            telegram_id INTEGER PRIMARY KEY,
+            username TEXT,
+            created_at TEXT NOT NULL
+        )
+    ''')
     conn.commit()
     conn.close()
 
@@ -175,8 +182,43 @@ def verify_admin_password(password: str) -> bool:
     except Exception:
         return False
 
+def is_admin(telegram_id: int) -> bool:
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT 1 FROM bot_admins WHERE telegram_id = ?", (telegram_id,))
+        row = cur.fetchone()
+        conn.close()
+        return row is not None
+    except Exception as e:
+        logger.error(f"is_admin check error: {e}")
+        return False
+
+def add_admin(telegram_id: int, username: str = ''):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        now = datetime.now().isoformat()
+        cur.execute(
+            "INSERT OR REPLACE INTO bot_admins (telegram_id, username, created_at) VALUES (?, ?, ?)",
+            (telegram_id, username or '', now)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"add_admin error: {e}")
+
+def remove_admin(telegram_id: int):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("DELETE FROM bot_admins WHERE telegram_id = ?", (telegram_id,))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"remove_admin error: {e}")
+
 # Admin sessiyalari va holatlar
-ADMIN_SESSIONS = set()
 WAITING_ADMIN_PASSWORD = set()
 
 # ==============================================================================
@@ -345,7 +387,7 @@ async def handle_start(message: Message):
     first_name = message.from_user.first_name
 
     # 1. Admin rejimidami?
-    if user_id in ADMIN_SESSIONS:
+    if is_admin(user_id):
         await message.answer(
             "👨‍🏫 <b>O'QITUVCHI / ADMIN BOSHQARUV PANELI</b>\n"
             "Barcha guruhlar va talabalarni ko'rishingiz mumkin:",
@@ -387,26 +429,47 @@ async def handle_start(message: Message):
 @router.message(Command("admin"))
 async def handle_admin_cmd(message: Message):
     user_id = message.from_user.id
-    if user_id in ADMIN_SESSIONS:
+    
+    # 1. Buyruq bilan birga parol yozilganmi? Masalan: /admin admin123
+    parts = (message.text or '').strip().split(maxsplit=1)
+    if len(parts) > 1:
+        pwd_input = parts[1].strip()
+        if verify_admin_password(pwd_input):
+            add_admin(user_id, message.from_user.username or '')
+            WAITING_ADMIN_PASSWORD.discard(user_id)
+            await message.answer(
+                "✅ <b>Parol to'g'ri! Siz admin sifatida tizimda doimiy saqlandingiz.</b>\n"
+                "Endi server qayta yonsa ham admin huquqingiz yo'qolmaydi.",
+                reply_markup=get_admin_dashboard_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+            return
+        else:
+            await message.answer("❌ Parol noto'g'ri. Qaytadan urinib ko'ring.")
+            return
+
+    # 2. Allaqachon adminmi?
+    if is_admin(user_id):
         await message.answer(
-            "👨‍🏫 <b>Siz Admin rejimidasiз:</b>",
+            "👨‍🏫 <b>Siz allaqachon Admin sifatida tizimdasiz:</b>",
             reply_markup=get_admin_dashboard_keyboard(),
             parse_mode=ParseMode.HTML
         )
         return
 
+    # 3. Yangi kirish uchun parol so'rash
     WAITING_ADMIN_PASSWORD.add(user_id)
     await message.answer(
         "🔐 <b>O'qituvchi / Admin parolini kiriting:</b>\n"
-        "<i>(Parolni xabar ko'rinishida yozib yuboring)</i>",
+        "<i>(Parolni xabar ko'rinishida yozib yuboring yoki /admin <parol> deb yozing)</i>",
         parse_mode=ParseMode.HTML
     )
 
 @router.message(Command("logout"))
 async def handle_logout_cmd(message: Message):
     user_id = message.from_user.id
-    if user_id in ADMIN_SESSIONS:
-        ADMIN_SESSIONS.discard(user_id)
+    if is_admin(user_id):
+        remove_admin(user_id)
         await message.answer("🚪 Admin rejimidan chiqdingiz. Qaytadan /start bosing.")
     else:
         await message.answer("Siz admin emassiz.")
@@ -669,8 +732,8 @@ async def cb_about(callback: CallbackQuery):
 @router.callback_query(F.data == "admin_dashboard")
 async def cb_admin_dashboard(callback: CallbackQuery):
     user_id = callback.from_user.id
-    if user_id not in ADMIN_SESSIONS:
-        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+    if not is_admin(user_id):
+        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
         return
 
     await callback.message.edit_text(
@@ -683,8 +746,8 @@ async def cb_admin_dashboard(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_groups")
 async def cb_admin_groups(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_SESSIONS:
-        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
         return
 
     groups = get_all_groups()
@@ -702,8 +765,8 @@ async def cb_admin_groups(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("agroup:"))
 async def cb_admin_group_students(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_SESSIONS:
-        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
         return
 
     parts = callback.data.split(":")
@@ -741,8 +804,8 @@ async def cb_admin_group_students(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("astudent:"))
 async def cb_admin_student(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_SESSIONS:
-        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
         return
 
     student_id = callback.data.split(":", 1)[1]
@@ -767,8 +830,8 @@ async def cb_admin_student(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("aunbind:"))
 async def cb_admin_unbind(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_SESSIONS:
-        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
         return
 
     student_id = callback.data.split(":", 1)[1]
@@ -778,8 +841,8 @@ async def cb_admin_unbind(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_bindings")
 async def cb_admin_bindings_list(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_SESSIONS:
-        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+    if not is_admin(callback.from_user.id):
+        await callback.answer("⚠️ Admin seansi faol emas. Qayta kirish uchun /admin bosing.", show_alert=True)
         return
 
     bindings = get_all_bindings()
@@ -805,7 +868,7 @@ async def cb_admin_bindings_list(callback: CallbackQuery):
 @router.callback_query(F.data == "admin_logout")
 async def cb_admin_logout(callback: CallbackQuery):
     user_id = callback.from_user.id
-    ADMIN_SESSIONS.discard(user_id)
+    remove_admin(user_id)
     await callback.message.edit_text("🚪 Admin rejimidan chiqdingiz. Qaytadan /start bosing.")
     await callback.answer()
 
@@ -815,13 +878,14 @@ async def handle_text(message: Message):
     user_id = message.from_user.id
     text_val = message.text.strip()
 
-    # Admin paroli kutilayotgan bo'lsa
-    if user_id in WAITING_ADMIN_PASSWORD:
+    # Admin paroli kutilayotgan bo'lsa YOKI to'g'ridan-to'g'ri admin parolini yozsa
+    if user_id in WAITING_ADMIN_PASSWORD or verify_admin_password(text_val):
         WAITING_ADMIN_PASSWORD.discard(user_id)
         if verify_admin_password(text_val):
-            ADMIN_SESSIONS.add(user_id)
+            add_admin(user_id, message.from_user.username or '')
             await message.answer(
-                "✅ <b>Parol to'g'ri! Admin rejimiga kirdingiz.</b>",
+                "✅ <b>Parol to'g'ri! Siz admin sifatida tizimda doimiy saqlandingiz.</b>\n"
+                "Endi server qayta yonsa ham admin huquqingiz yo'qolmaydi.",
                 reply_markup=get_admin_dashboard_keyboard(),
                 parse_mode=ParseMode.HTML
             )
@@ -830,8 +894,8 @@ async def handle_text(message: Message):
         return
 
     # Admin bo'lsa
-    if user_id in ADMIN_SESSIONS:
-        await message.answer("Admin boshqaruv paneli:", reply_markup=get_admin_dashboard_keyboard())
+    if is_admin(user_id):
+        await message.answer("👨‍🏫 Admin boshqaruv paneli:", reply_markup=get_admin_dashboard_keyboard())
         return
 
     # Talaba biriktirilgan bo'lsa
