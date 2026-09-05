@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Elektron Jurnal - 15 ta Amaliy Dars va Mustaqil Ish</title>
+
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome 6 Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <!-- Custom Responsive Stylesheet -->
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="app-container">
+  <!-- SIDEBAR BACKDROP (Mobile) -->
+  <div class="sidebar-overlay" onclick="app.closeMobileSidebar()"></div>
+
+  <!-- SIDEBAR NAVIGATION -->
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-header-left">
+        <div class="sidebar-logo">
+          <i class="fa-solid fa-graduation-cap"></i>
+        </div>
+        <div>
+          <div class="sidebar-title">Elektron Jurnal</div>
+          <div class="sidebar-subtitle">15 dars & Mustaqil ish</div>
+        </div>
+      </div>
+      <button class="sidebar-close-btn" onclick="app.closeMobileSidebar()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-tab="dashboard">
+        <i class="fa-solid fa-chart-pie"></i>
+        <span>Boshqaruv Paneli</span>
+      </a>
+      <a class="nav-item" data-tab="students">
+        <i class="fa-solid fa-user-graduate"></i>
+        <span>Talabalar Ro'yxati</span>
+      </a>
+      <a class="nav-item" data-tab="attendance">
+        <i class="fa-solid fa-calendar-check"></i>
+        <span>Davomat Jurnali</span>
+      </a>
+      <a class="nav-item" data-tab="grades">
+        <i class="fa-solid fa-calculator"></i>
+        <span>15 ta Amaliy Dars</span>
+      </a>
+      <a class="nav-item" data-tab="mustaqil">
+        <i class="fa-solid fa-book-open-reader"></i>
+        <span>Mustaqil Ish</span>
+      </a>
+      <a class="nav-item" data-tab="summary">
+        <i class="fa-solid fa-table-list"></i>
+        <span>Hisobot va Reyting</span>
+      </a>
+      <a class="nav-item" data-tab="settings">
+        <i class="fa-solid fa-sliders"></i>
+        <span>Sozlamalar</span>
+      </a>
+    </nav>
+
+    <div class="sidebar-footer" style="display: flex; flex-direction: column; gap: 8px;">
+      <button class="btn btn-success" style="width: 100%;" onclick="app.exportExcel()">
+        <i class="fa-solid fa-file-excel"></i>
+        <span>Excelda Yuklab Olish</span>
+      </button>
+      <button class="btn btn-outline btn-sm" style="width: 100%; color: var(--danger); justify-content: center;" onclick="app.logout()">
+        <i class="fa-solid fa-arrow-right-from-bracket"></i>
+        <span>Tizimdan Chiqish</span>
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT AREA -->
+  <div class="main-wrapper">
+    <!-- TOP HEADER -->
+    <header class="top-header">
+      <div class="header-left">
+        <button class="menu-toggle-btn" onclick="app.toggleMobileSidebar()" title="Menyuni ochish">
+          <i class="fa-solid fa-bars"></i>
+        </button>
+        <h1 class="page-title" id="current-page-title">Boshqaruv Paneli</h1>
+      </div>
+      <div class="header-right">
+        <!-- SERVER SINXRONLANISH STATUSI -->
+        <span id="server-status-badge" class="badge badge-neutral" title="Server holati">
+          <i class="fa-solid fa-cloud"></i> <span id="server-status-text">Serverga ulanish...</span>
+        </span>
+
+        <button id="dark-mode-toggle" class="btn btn-outline btn-icon" title="Tungi / Kunduzgi rejim">
+          <i class="fa-solid fa-moon"></i>
+        </button>
+        <button class="btn btn-primary btn-sm" onclick="app.openAddStudentModal()">
+          <i class="fa-solid fa-user-plus"></i>
+          <span>Talaba</span>
+        </button>
+        <button class="btn btn-outline btn-icon" style="color: var(--danger);" onclick="app.logout()" title="Tizimdan chiqish (Logout)">
+          <i class="fa-solid fa-arrow-right-from-bracket"></i>
+        </button>
+      </div>
+    </header>
+
+    <!-- CONTENT BODY -->
+    <main class="content-area">
+
+      <!-- ================================================================= -->
+      <!-- 1. BOSHQARUV PANELI (DASHBOARD) -->
+      <!-- ================================================================= -->
+      <div id="tab-dashboard" class="tab-pane active">
+        <!-- KPI KARTALARI -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-info">
+              <h4>Jami Talabalar</h4>
+              <div class="stat-value" id="dash-total-students">0</div>
+              <div class="stat-desc">Barcha guruhlar</div>
+            </div>
+            <div class="stat-icon blue">
+              <i class="fa-solid fa-users"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-info">
+              <h4>Guruhlar Soni</h4>
+              <div class="stat-value" id="dash-total-groups">0</div>
+              <div class="stat-desc">Faol guruhlar</div>
+            </div>
+            <div class="stat-icon purple">
+              <i class="fa-solid fa-layer-group"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-info">
+              <h4>O'rtacha Davomat</h4>
+              <div class="stat-value" id="dash-avg-attendance">0%</div>
+              <div class="stat-desc">Qatnashish darajasi</div>
+            </div>
+            <div class="stat-icon green">
+              <i class="fa-solid fa-clipboard-user"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-info">
+              <h4>Umumiy O'rtacha (GPA)</h4>
+              <div class="stat-value" id="dash-avg-grade">0.0</div>
+              <div class="stat-desc">Amaliy + Mustaqil ish</div>
+            </div>
+            <div class="stat-icon amber">
+              <i class="fa-solid fa-star"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- DIAGRAMMALAR VA TAHLIL -->
+        <div class="dashboard-grid">
+          <!-- Guruhlar o'rtacha bali grafigi -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-chart-column" style="color: var(--primary);"></i> 15 Dars Bo'yicha Guruhlar O'rtacha Bali</h3>
+            </div>
+            <div class="card-body">
+              <div style="height: 240px; position: relative;">
+                <canvas id="chart-groups"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Davomat taqsimoti -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-chart-pie" style="color: var(--success);"></i> Davomat Taqsimoti</h3>
+            </div>
+            <div class="card-body">
+              <div style="height: 240px; position: relative;">
+                <canvas id="chart-attendance"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TOP TALABALAR VA OGOHLANTIRISHLAR -->
+        <div class="dashboard-grid">
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-trophy" style="color: #eab308;"></i> Top A'lochi Talabalar</h3>
+              <button class="btn btn-outline btn-sm" onclick="app.switchTab('summary')">Barchasi</button>
+            </div>
+            <div class="card-body" id="dash-top-students-list">
+              <!-- JS orqali to'ldiriladi -->
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-triangle-exclamation" style="color: var(--danger);"></i> Diqqat Talab Talabalar</h3>
+            </div>
+            <div class="card-body" id="dash-attention-students-list">
+              <!-- JS orqali to'ldiriladi -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- 2. TALABALAR RO'YXATI (STUDENTS) -->
+      <!-- ================================================================= -->
+      <div id="tab-students" class="tab-pane">
+        <div class="action-bar">
+          <div class="action-bar-left">
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="students-search-input" class="form-control" placeholder="Ism yoki telefon qidirish..." oninput="app.renderStudents()">
+            </div>
+            <select id="students-group-filter" class="form-control" onchange="app.renderStudents()">
+              <option value="all">Barcha guruhlar</option>
+            </select>
+            <span id="students-count-badge" class="badge badge-neutral">Jami: 0</span>
+          </div>
+
+          <div class="action-bar-right">
+            <button class="btn btn-primary" onclick="app.openBulkAddModal()" title="Word, Telegram yoki Exceldan talabalar ro'yxatini nusxalab joylashtirish">
+              <i class="fa-solid fa-paste"></i>
+              <span>Nusxalab Qo'shish</span>
+            </button>
+            <label class="btn btn-outline" style="cursor: pointer;" title="Excel (.xlsx) fayldan yuklash">
+              <i class="fa-solid fa-file-arrow-up"></i>
+              <span>Exceldan Yuklash</span>
+              <input type="file" id="excel-import-file" accept=".xlsx, .xls, .csv" style="display: none;" onchange="app.handleExcelImport(this)">
+            </label>
+            <button class="btn btn-outline" onclick="app.downloadTemplate()" title="Excel shablonini yuklab olish">
+              <i class="fa-solid fa-download"></i>
+              <span>Shablon</span>
+            </button>
+            <button class="btn btn-outline" onclick="app.openAddStudentModal()" title="Bitta talaba qo'shish">
+              <i class="fa-solid fa-user-plus"></i>
+              <span>Yakka Talaba</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 38px;">T/r</th>
+                <th>F.I.SH</th>
+                <th>Guruhi</th>
+                <th>Telefon</th>
+                <th>Davomat</th>
+                <th>Umumiy Ball</th>
+                <th style="width: 90px;">Amallar</th>
+              </tr>
+            </thead>
+            <tbody id="students-table-body">
+              <!-- JS orqali to'ldiriladi -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- 3. DAVOMAT JURNALI (ATTENDANCE) -->
+      <!-- ================================================================= -->
+      <div id="tab-attendance" class="tab-pane">
+        <div class="action-bar">
+          <div class="action-bar-left">
+            <select id="att-group-select" class="form-control" onchange="app.renderAttendance()"></select>
+
+            <div style="display: flex; gap: 6px; width: 100%;">
+              <button class="btn btn-primary btn-sm att-subtab active" data-subtab="daily" style="flex: 1;">
+                <i class="fa-solid fa-calendar-day"></i> Kunlik Davomat
+              </button>
+              <button class="btn btn-outline btn-sm att-subtab" data-subtab="matrix" style="flex: 1;">
+                <i class="fa-solid fa-table-cells"></i> 15 Dars Matritsasi
+              </button>
+            </div>
+          </div>
+
+          <div class="action-bar-right">
+            <button class="btn btn-outline btn-sm" onclick="app.generate15AttendanceDates()" title="15 ta amaliy dars sanalarini hosil qilish">
+              <i class="fa-solid fa-calendar-plus"></i> 15 Dars Sanalari
+            </button>
+            <button class="btn btn-success btn-sm" onclick="app.exportExcel()">
+              <i class="fa-solid fa-file-excel"></i> Excelga Chiqarish
+            </button>
+          </div>
+        </div>
+
+        <!-- 3.1 KUNLIK DAVOMAT KO'RINISHI -->
+        <div id="att-daily-view">
+          <div class="card" style="margin-bottom: 16px;">
+            <div class="card-body" style="padding: 16px;">
+              <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; align-items: end;">
+                <div>
+                  <label class="form-label">Sana</label>
+                  <input type="date" id="att-date-input" class="form-control" onchange="app.renderAttendance()">
+                </div>
+                <div>
+                  <label class="form-label">Dars turi</label>
+                  <select id="att-lesson-type" class="form-control">
+                    <option value="Amaliyot">Amaliy mashg'ulot</option>
+                    <option value="Ma'ruza">Ma'ruza</option>
+                    <option value="Laboratoriya">Laboratoriya</option>
+                    <option value="Seminar">Seminar</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="form-label">Dars mavzusi / Izoh</label>
+                  <input type="text" id="att-lesson-theme" class="form-control" placeholder="Masalan: 5-amaliy ish...">
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button type="button" class="btn btn-outline btn-sm" onclick="app.markAllDaily('present')" style="color: var(--success); flex: 1;">
+                    <i class="fa-solid fa-check-double"></i> Hammasi keldi
+                  </button>
+                  <button type="button" class="btn btn-primary btn-sm" onclick="app.saveDailyAttendanceForm()" style="flex: 1;">
+                    <i class="fa-solid fa-floppy-disk"></i> Saqlash
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-list-check" style="color: var(--primary);"></i> Talabalar Davomati</h3>
+            </div>
+            <div id="daily-attendance-list">
+              <!-- JS orqali to'ldiriladi -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 3.2 UMUMIY MATRITSA KO'RINISHI -->
+        <div id="att-matrix-view" style="display: none;">
+          <div class="mobile-scroll-hint">
+            <i class="fa-solid fa-arrows-left-right"></i> 15 ta dars: Jadvalni o'ngga suring (Talaba ismi qotirilgan)
+          </div>
+
+          <div style="margin-bottom: 10px; font-size: 0.8rem; color: var(--text-muted); display: flex; flex-wrap: wrap; gap: 12px;">
+            <span><strong style="color: var(--success);">+</strong> : Kelgan</span>
+            <span><strong style="color: var(--danger);">—</strong> : Kelmagan</span>
+            <span><strong style="color: var(--warning);">S</strong> : Sababli</span>
+            <span><i class="fa-solid fa-circle-info"></i> Katakchani bosib to'g'ridan-to'g'ri o'zgartiring</span>
+          </div>
+
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead id="att-matrix-thead">
+                <!-- JS orqali to'ldiriladi -->
+              </thead>
+              <tbody id="att-matrix-tbody">
+                <!-- JS orqali to'ldiriladi -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- 4. 15 TA AMALIY DARS BAHOLARI (Oraliq nazoratsiz) -->
+      <!-- ================================================================= -->
+      <div id="tab-grades" class="tab-pane">
+        <div class="action-bar">
+          <div class="action-bar-left">
+            <select id="grades-group-select" class="form-control" onchange="app.renderGrades()"></select>
+            <span id="grades-group-avg-badge" class="badge badge-info" style="font-size: 0.88rem; padding: 6px 10px;">15 Dars o'rtacha bali: 0.0</span>
+          </div>
+
+          <div class="action-bar-right">
+            <button class="btn btn-outline" onclick="app.apply15LessonsTemplate()" title="15 ta amaliy dars shablonini o'rnatish">
+              <i class="fa-solid fa-bolt" style="color: #f59e0b;"></i> 15 ta Amaliy Dars
+            </button>
+            <button class="btn btn-primary" onclick="app.openAddColumnModal()">
+              <i class="fa-solid fa-plus"></i> Yangi Dars
+            </button>
+            <button class="btn btn-success" onclick="app.exportExcel()">
+              <i class="fa-solid fa-file-excel"></i> Excel
+            </button>
+          </div>
+        </div>
+
+        <div class="mobile-scroll-hint">
+          <i class="fa-solid fa-arrows-left-right"></i> 15 ta amaliy dars: Jadvalni o'ngga suring (Talaba ismi qotirilgan)
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead id="grades-table-thead">
+              <!-- JS orqali to'ldiriladi -->
+            </thead>
+            <tbody id="grades-table-tbody">
+              <!-- JS orqali to'ldiriladi -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- 5. ALOHIDA MUSTAQIL ISH BAHOLARI PANELI -->
+      <!-- ================================================================= -->
+      <div id="tab-mustaqil" class="tab-pane">
+        <div class="action-bar">
+          <div class="action-bar-left">
+            <select id="mustaqil-group-select" class="form-control" onchange="app.renderMustaqil()"></select>
+            <span id="mustaqil-group-avg-badge" class="badge badge-warning" style="font-size: 0.88rem; padding: 6px 10px;">Mustaqil ish o'rtacha bali: 0.0</span>
+          </div>
+
+          <div class="action-bar-right">
+            <button class="btn btn-primary" onclick="app.openAddMustaqilModal()">
+              <i class="fa-solid fa-plus"></i> Yangi Mustaqil Ish
+            </button>
+            <button class="btn btn-success" onclick="app.exportExcel()">
+              <i class="fa-solid fa-file-excel"></i> Excel
+            </button>
+          </div>
+        </div>
+
+        <div class="mobile-scroll-hint">
+          <i class="fa-solid fa-arrows-left-right"></i> Mustaqil ishlar: Jadvalni o'ngga suring (Talaba ismi qotirilgan)
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead id="mustaqil-table-thead">
+              <!-- JS orqali to'ldiriladi -->
+            </thead>
+            <tbody id="mustaqil-table-tbody">
+              <!-- JS orqali to'ldiriladi -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- 6. UMUMIY HISOBOT VA REYTING (SUMMARY) -->
+      <!-- ================================================================= -->
+      <div id="tab-summary" class="tab-pane">
+        <div class="action-bar">
+          <div class="action-bar-left">
+            <div class="search-box">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <input type="text" id="summary-search-input" class="form-control" placeholder="Talabani qidirish..." oninput="app.renderSummary()">
+            </div>
+            <select id="summary-group-filter" class="form-control" onchange="app.renderSummary()">
+              <option value="all">Barcha guruhlar</option>
+            </select>
+          </div>
+
+          <div class="action-bar-right">
+            <select id="export-group-select" class="form-control">
+              <option value="all">Barcha guruhlar (Excel)</option>
+            </select>
+            <button class="btn btn-success" onclick="app.exportExcel()">
+              <i class="fa-solid fa-file-excel"></i>
+              <span>Excelda To'liq Yuklab Olish</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width: 45px; text-align: center;">O'rin</th>
+                <th>Talaba F.I.SH</th>
+                <th>Guruhi</th>
+                <th style="text-align: center;">Jami Dars</th>
+                <th style="text-align: center;">Qoldirilgan</th>
+                <th style="text-align: center;">Davomat %</th>
+                <th style="text-align: center; color: var(--primary);">15 Amaliy</th>
+                <th style="text-align: center; color: #9333ea;">Mustaqil Ish</th>
+                <th style="text-align: center; font-weight: 800;">Umumiy Ball</th>
+                <th style="text-align: center;">Holati</th>
+              </tr>
+            </thead>
+            <tbody id="summary-table-tbody">
+              <!-- JS orqali to'ldiriladi -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ================================================================= -->
+      <!-- 7. SOZLAMALAR (SETTINGS) -->
+      <!-- ================================================================= -->
+      <div id="tab-settings" class="tab-pane">
+        <div class="dashboard-grid">
+          <!-- Asosiy sozlamalar -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-gear" style="color: var(--primary);"></i> Tizim Sozlamalari</h3>
+            </div>
+            <div class="card-body">
+              <form onsubmit="app.saveSettingsForm(event)">
+                <div class="form-group">
+                  <label class="form-label">Ta'lim muassasasi nomi</label>
+                  <input type="text" id="setting-institution" class="form-control" placeholder="Masalan: Samarqand Davlat Universiteti">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Fan nomi</label>
+                  <input type="text" id="setting-subject" class="form-control" placeholder="Masalan: Axborot Texnologiyalari (15 dars)">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Baholash tizimi</label>
+                  <select id="setting-grading-system" class="form-control">
+                    <option value="5">5 ballik tizim (2, 3, 4, 5)</option>
+                    <option value="100">100 ballik tizim (0 - 100 ball)</option>
+                  </select>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                  <i class="fa-solid fa-check"></i> Sozlamalarni Saqlash
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Guruhlar boshqaruvi -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-users-rectangle" style="color: var(--info);"></i> Guruhlar Boshqaruvi</h3>
+              <button class="btn btn-outline btn-sm" onclick="app.addNewGroupPrompt()">
+                <i class="fa-solid fa-plus"></i> Guruh Qo'shish
+              </button>
+            </div>
+            <div class="card-body">
+              <div id="settings-groups-list" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                <!-- JS orqali to'ldiriladi -->
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Admin Xavfsizligi va Server Sinxroni -->
+        <div class="dashboard-grid">
+          <!-- Admin Parolini o'zgartirish -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-shield-halved" style="color: var(--warning);"></i> Admin Xavfsizligi</h3>
+            </div>
+            <div class="card-body">
+              <form onsubmit="app.changePassword(event)">
+                <div class="form-group">
+                  <label class="form-label">Amaldagi parol *</label>
+                  <input type="password" id="admin-current-pass" class="form-control" placeholder="Eski parolingizni kiriting" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Yangi parol *</label>
+                  <input type="password" id="admin-new-pass" class="form-control" placeholder="Kamida 4 ta belgi" minlength="4" required>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Yangi parolni tasdiqlash *</label>
+                  <input type="password" id="admin-confirm-pass" class="form-control" placeholder="Yangi parolni takrorlang" minlength="4" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width: 100%;">
+                  <i class="fa-solid fa-key"></i> Parolni Yangilash
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <!-- Markaziy Server & Wi-Fi Sinxronlash -->
+          <div class="card">
+            <div class="card-header">
+              <h3 class="card-title"><i class="fa-solid fa-network-wired" style="color: var(--primary);"></i> Markaziy Server & Qurilmalar</h3>
+            </div>
+            <div class="card-body">
+              <div style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 14px;">
+                <p>Telefon va kompyuter bitta bazaga ulangan holda ishlaydi. Qaysi qurilmadan ma'lumot kiritsangiz ham, markaziy SQLite bazada birdek saqlanadi.</p>
+              </div>
+
+              <div style="background: var(--bg-main); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 12px; margin-bottom: 14px; font-size: 0.84rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                  <span><b>Server holati:</b></span>
+                  <span id="settings-server-status" class="badge badge-success">Ulangan</span>
+                </div>
+                <div style="color: var(--text-muted); word-break: break-all;">
+                  Lokal Wi-Fi manzili: <code>http://192.168.0.116:5000</code>
+                </div>
+              </div>
+
+              <button class="btn btn-outline" style="width: 100%; justify-content: center;" onclick="app.manualServerSync()">
+                <i class="fa-solid fa-rotate"></i> Baza bilan Qayta Sinxronlash
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Zaxira nusxa va boshqaruv -->
+        <div class="card">
+          <div class="card-header">
+            <h3 class="card-title"><i class="fa-solid fa-database" style="color: #9333ea;"></i> Ma'lumotlarni Zaxiralash va Tiklash</h3>
+          </div>
+          <div class="card-body">
+            <p style="color: var(--text-muted); margin-bottom: 16px; font-size: 0.88rem;">
+              Barcha talabalar, 15 ta dars davomati, amaliy va mustaqil ish baholari brauzerda saqlanadi. 
+              Zaxira nusxa (JSON) orqali boshqa kompyuter yoki telefonga o'tkazishingiz mumkin.
+            </p>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+              <button class="btn btn-outline" onclick="app.downloadJsonBackup()">
+                <i class="fa-solid fa-file-export"></i> Zaxira Nusxani Yuklash (JSON)
+              </button>
+
+              <label class="btn btn-outline" style="cursor: pointer; text-align: center;">
+                <i class="fa-solid fa-file-import"></i> Zaxiradan Qayta Tiklash
+                <input type="file" accept=".json" style="display: none;" onchange="app.handleJsonRestore(this)">
+              </label>
+
+              <button class="btn btn-outline" onclick="app.confirmResetDemo()" style="color: var(--warning);">
+                <i class="fa-solid fa-rotate-left"></i> 15 Dars Namunalarini Qaytarish
+              </button>
+
+              <button class="btn btn-outline" onclick="app.confirmClearAll()" style="color: var(--danger);">
+                <i class="fa-solid fa-trash-can"></i> Bazani Butunlay Tozalash
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MOBIL PASTKI NAVIGATSIYA (BOTTOM NAV) -->
+<!-- ======================================================================= -->
+<nav class="mobile-bottom-nav">
+  <a class="mobile-nav-item active" data-tab="dashboard">
+    <i class="fa-solid fa-chart-pie"></i>
+    <span>Bosh</span>
+  </a>
+  <a class="mobile-nav-item" data-tab="students">
+    <i class="fa-solid fa-user-graduate"></i>
+    <span>Talabalar</span>
+  </a>
+  <a class="mobile-nav-item" data-tab="attendance">
+    <i class="fa-solid fa-calendar-check"></i>
+    <span>Davomat</span>
+  </a>
+  <a class="mobile-nav-item" data-tab="grades">
+    <i class="fa-solid fa-calculator"></i>
+    <span>15 Dars</span>
+  </a>
+  <a class="mobile-nav-item" data-tab="mustaqil">
+    <i class="fa-solid fa-book-open-reader"></i>
+    <span>Mustaqil</span>
+  </a>
+  <a class="mobile-nav-item" data-tab="summary">
+    <i class="fa-solid fa-table-list"></i>
+    <span>Hisobot</span>
+  </a>
+</nav>
+
+<!-- ======================================================================= -->
+<!-- MODAL OYNA: TALABA QO'SHISH / TAHRIRLASH -->
+<!-- ======================================================================= -->
+<div id="modal-student" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 class="modal-title" id="student-modal-title">Yangi Talaba Qo'shish</h3>
+      <button class="modal-close" onclick="app.closeAllModals()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form onsubmit="app.saveStudentForm(event)">
+      <div class="modal-body">
+        <input type="hidden" id="student-id-input">
+        <div class="form-group">
+          <label class="form-label">Talaba F.I.SH *</label>
+          <input type="text" id="student-name-input" class="form-control" placeholder="Familiya Ism Sharif" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Guruhi *</label>
+          <select id="student-group-input" class="form-control" required></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Telefon raqami</label>
+          <input type="text" id="student-phone-input" class="form-control" placeholder="+998 90 123 45 67">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Izoh / Qo'shimcha ma'lumot</label>
+          <input type="text" id="student-note-input" class="form-control" placeholder="Masalan: Sardor, Grant...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="app.closeAllModals()">Bekor qilish</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-check"></i> Saqlash</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MODAL OYNA: YANGI AMALIY DARS USTUNI QO'SHISH -->
+<!-- ======================================================================= -->
+<div id="modal-add-column" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 class="modal-title">Yangi Amaliy Dars Qo'shish</h3>
+      <button class="modal-close" onclick="app.closeAllModals()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form onsubmit="app.saveColumnForm(event)">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Dars nomi *</label>
+          <input type="text" id="col-title-input" class="form-control" placeholder="Masalan: 16-amaliy..." required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Maksimal ball</label>
+          <input type="number" id="col-maxscore-input" class="form-control" value="5" min="1" max="100">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="app.closeAllModals()">Bekor qilish</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Qo'shish</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MODAL OYNA: YANGI MUSTAQIL ISH QO'SHISH -->
+<!-- ======================================================================= -->
+<div id="modal-add-mustaqil" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 class="modal-title">Yangi Mustaqil Ish Qo'shish</h3>
+      <button class="modal-close" onclick="app.closeAllModals()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form onsubmit="app.saveMustaqilForm(event)">
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Mustaqil ish nomi *</label>
+          <input type="text" id="mi-title-input" class="form-control" placeholder="Masalan: 4-Mustaqil ish" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mavzusi / Tavsifi</label>
+          <input type="text" id="mi-desc-input" class="form-control" placeholder="Masalan: Referat, taqdimot, hisob-kitob loyihasi...">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Maksimal ball</label>
+          <input type="number" id="mi-maxscore-input" class="form-control" value="5" min="1" max="100">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="app.closeAllModals()">Bekor qilish</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Qo'shish</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MODAL OYNA: TALABALAR RO'YXATINI NUSXALAB QO'SHISH (KOPIYA) -->
+<!-- ======================================================================= -->
+<div id="modal-bulk-add" class="modal-backdrop">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h3 class="modal-title"><i class="fa-solid fa-paste" style="color: var(--primary);"></i> Ro'yxatni Nusxalab Qo'shish</h3>
+      <button class="modal-close" onclick="app.closeAllModals()"><i class="fa-solid fa-xmark"></i></button>
+    </div>
+    <form onsubmit="app.saveBulkStudentsForm(event)">
+      <div class="modal-body">
+        <div style="background: var(--primary-light); color: var(--primary); padding: 10px 14px; border-radius: var(--radius-md); font-size: 0.84rem; margin-bottom: 14px; line-height: 1.4;">
+          <i class="fa-solid fa-circle-info"></i> <strong>Qanday ishlaydi:</strong><br>
+          Telegram, Word, Excel yoki istalgan ro'yxatdan talabalarni to'liq nusxalab (Ctrl+C), quyidagi maydonga qo'ying (Ctrl+V). Tizim har bir qatordagi raqamlarni (1., 2...) avtomatik tozalab, talabalarni alohida-alohida guruhga qo'shadi!
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Qaysi guruhga qo'shilsin? *</label>
+          <select id="bulk-group-input" class="form-control" required></select>
+        </div>
+
+        <div class="form-group">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <label class="form-label" style="margin-bottom: 0;">Talabalar ro'yxati (Har biri yangi qatorda) *</label>
+            <span id="bulk-preview-badge" class="badge badge-neutral">Aniqlangan talabalar: 0 ta</span>
+          </div>
+          <textarea id="bulk-students-textarea" class="form-control" rows="9" 
+            placeholder="Masalan quyidagicha nusxalab qo'ying:&#10;1. Aliyev Behruz Shavkatovich&#10;2. Karimova Madina Anvarovna&#10;3. Toshmatov Jasur Ilhom o‘g‘li&#10;4. Yusupova Shahzoda Baxtiyor qizi&#10;5. Rustamov Sardor"
+            oninput="app.onBulkTextChange(this)" required style="font-family: inherit; font-size: 0.88rem; line-height: 1.5;"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="app.closeAllModals()">Bekor qilish</button>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Barcha Talabalarni Kiritish</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ======================================================================= -->
+<!-- MODAL: ADMIN KIRISH EKRANI (LOGIN OVERLAY) -->
+<!-- ======================================================================= -->
+<div id="login-overlay" class="login-overlay" style="display: none;">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-logo">
+        <i class="fa-solid fa-graduation-cap"></i>
+      </div>
+      <h2 class="login-title">Elektron Jurnal</h2>
+      <p class="login-subtitle">O'qituvchi va Admin tizimiga kirish</p>
+    </div>
+
+    <form id="login-form" onsubmit="app.submitLogin(event)">
+      <div id="login-error-alert" class="login-alert" style="display: none;">
+        <i class="fa-solid fa-circle-exclamation"></i>
+        <span id="login-error-text">Login yoki parol noto'g'ri!</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="login-username">Login / Foydalanuvchi nomi</label>
+        <div class="input-with-icon">
+          <i class="fa-solid fa-user input-icon"></i>
+          <input type="text" id="login-username" class="form-control" placeholder="admin" required autocomplete="username" value="admin">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="login-password">Maxfiy Parol</label>
+        <div class="input-with-icon">
+          <i class="fa-solid fa-lock input-icon"></i>
+          <input type="password" id="login-password" class="form-control" placeholder="Parolingizni kiriting" required autocomplete="current-password">
+          <button type="button" class="password-toggle-btn" onclick="app.togglePasswordVisibility('login-password', this)" title="Parolni ko'rsatish/yashirish">
+            <i class="fa-regular fa-eye"></i>
+          </button>
+        </div>
+      </div>
+
+      <div class="login-options">
+        <label class="login-remember">
+          <input type="checkbox" id="login-remember" checked>
+          <span>Eslab qolish (30 kun)</span>
+        </label>
+      </div>
+
+      <button type="submit" id="login-submit-btn" class="btn btn-primary btn-lg" style="width: 100%; justify-content: center;">
+        <i class="fa-solid fa-right-to-bracket"></i>
+        <span>Tizimga Kirish</span>
+      </button>
+
+      <div class="login-footer-hint">
+        <i class="fa-solid fa-circle-info"></i> Standart parol: <b>admin123</b>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- VENDOR LIBRARIES (OFFLINE & FAST) -->
+<script src="lib/xlsx.full.min.js"></script>
+<script src="lib/chart.min.js"></script>
+
+<!-- APP MODULES -->
+<script src="js/storage.js"></script>
+<script src="js/attendance.js"></script>
+<script src="js/grades.js"></script>
+<script src="js/excel.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
