@@ -37,6 +37,21 @@ def run_telegram_bot():
     except (KeyboardInterrupt, SystemExit):
         print("Telegram bot to'xtatildi.")
 
+def run_keep_alive():
+    """Render.com da server uxlab qolmasligi uchun har 10 daqiqada o'zini-o'zi ping qilib turish"""
+    import time
+    import urllib.request
+    url = os.environ.get('RENDER_EXTERNAL_URL')
+    if not url:
+        return
+    print(f"  [OK] Render 24/7 Keep-Alive faollashtirildi: {url}")
+    while True:
+        time.sleep(600)
+        try:
+            urllib.request.urlopen(f"{url}/api/settings", timeout=15)
+        except Exception:
+            pass
+
 if __name__ == '__main__':
     print("\n" + "=" * 65)
     print("  ELEKTRON JURNAL & TELEGRAM BOT — 24/7 BIRLASHTIRILGAN TIZIM")
@@ -52,7 +67,11 @@ if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # 3. Asosiy оqimda Telegram botni yurgizamiz
+    # 3. Agar Render bulutida bo'lsa, uxlab qolmaslik uchun keep-alive оqimini yoqamiz
+    keep_alive_thread = threading.Thread(target=run_keep_alive, daemon=True)
+    keep_alive_thread.start()
+
+    # 4. Asosiy оqimda Telegram botni yurgizamiz
     try:
         run_telegram_bot()
     except (KeyboardInterrupt, SystemExit):

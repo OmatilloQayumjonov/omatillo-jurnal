@@ -2,6 +2,8 @@
 
 O'qituvchilar va murabbiylar uchun mo'ljallangan qulay, zamonaviy, mobil telefonlarga to'liq moslashgan elektron jurnal dasturi.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/OmatilloQayumjonov/omatillo-jurnal)
+
 ---
 
 ## 🚀 Qanday Ishga Tushiriladi?
