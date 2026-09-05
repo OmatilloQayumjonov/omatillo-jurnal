@@ -131,10 +131,13 @@ class JurnalStorage {
         this.showSaveIndicator(true);
         return true;
       } else if (res.status === 401) {
-        // Token yangilab ko'ramiz
-        const relogged = await this.autoRelogin();
-        if (relogged) {
-          return await this.saveToServer(key, value);
+        // Parol boshqa qurilmada o'zgargan yoki token bekor qilingan
+        localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+        localStorage.removeItem('jurnal_auth_logged_in');
+        this.token = '';
+        if (window.app && typeof window.app.showLoginModal === 'function') {
+          window.app.showLoginModal();
+          window.app.showToast("Admin paroli o'zgargan! Iltimos, yangi parolni kiriting.", "warning");
         }
       }
     } catch (err) {
@@ -182,26 +185,6 @@ class JurnalStorage {
     return false;
   }
 
-  async autoRelogin() {
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: 'admin', password: 'admin123' })
-      });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.token) {
-          this.token = json.token;
-          localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, json.token);
-          return true;
-        }
-      }
-    } catch (e) {
-      console.warn("autoRelogin muvaffaqiyatsiz:", e);
-    }
-    return false;
-  }
 
   showSaveIndicator(success, customMsg) {
     let indicator = document.getElementById('save-status-toast');

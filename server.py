@@ -50,15 +50,13 @@ def init_db():
         )
     ''')
 
-    # Standart admin foydalanuvchisini yaratish yoki yangilash (admin / admin123)
+    # Standart admin foydalanuvchisini yaratish (agar hali mavjud bo'lmasa)
     cur.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cur.fetchone():
         cur.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
             ('admin', hash_password('admin123'))
         )
-    else:
-        cur.execute("UPDATE users SET password_hash = ? WHERE username = 'admin'", (hash_password('admin123'),))
 
     # 2. Kalit-qiymat ma'lumotlar jadvali (Talabalar, Davomat, Baholar, Mustaqil ish)
     cur.execute('''
@@ -216,36 +214,24 @@ def api_login():
     cur.execute("SELECT * FROM users WHERE username = ?", (username,))
     user = cur.fetchone()
 
-    # Moslashuvchan tekshiruv: admin uchun admin123 yoki admin qabul qilinadi
-    is_valid = False
-    if username == 'admin' and (password in ['admin123', 'admin', '12345', '1234'] or (user and user['password_hash'] == hash_password(password))):
-        is_valid = True
-    elif user and user['password_hash'] == hash_password(password):
-        is_valid = True
-
-    if not is_valid:
+    # Haqiqiy bazadagi parolni tekshirish (yangi o'rnatilgan parol qat'iy tekshiriladi)
+    if not user or user['password_hash'] != hash_password(password):
         conn.close()
         return jsonify({'success': False, 'message': "Login yoki parol noto'g'ri!"}), 401
 
-    # Yangi xavfsiz token yaratish (90 kun amal qiladi)
+    # Yangi xavfsiz token yaratish (doimiy)
     token = secrets.token_urlsafe(32)
-    expiry = (datetime.now() + timedelta(days=90)).isoformat()
+    expiry = (datetime.now() + timedelta(days=36500)).isoformat()
 
     cur.execute(
         "INSERT OR REPLACE INTO user_tokens (token, expiry) VALUES (?, ?)",
         (token, expiry)
     )
 
-    if user:
-        cur.execute(
-            "UPDATE users SET token = ?, token_expiry = ?, password_hash = ? WHERE id = ?",
-            (token, expiry, hash_password('admin123'), user['id'])
-        )
-    else:
-        cur.execute(
-            "INSERT INTO users (username, password_hash, token, token_expiry) VALUES (?, ?, ?, ?)",
-            ('admin', hash_password('admin123'), token, expiry)
-        )
+    cur.execute(
+        "UPDATE users SET token = ?, token_expiry = ? WHERE id = ?",
+        (token, expiry, user['id'])
+    )
 
     conn.commit()
     conn.close()
@@ -268,7 +254,7 @@ def api_change_password():
     if not check_auth_token():
         return jsonify({'success': False, 'message': "Ruxsat berilmagan!"}), 401
 
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
     old_pwd = data.get('old_password', '').strip()
     new_pwd = data.get('new_password', '').strip()
 
@@ -280,15 +266,43 @@ def api_change_password():
     cur.execute("SELECT * FROM users WHERE username = 'admin'")
     user = cur.fetchone()
 
-    if not user or user['password_hash'] != hash_password(old_pwd):
+    if not user:
+        conn.close()
+        return jsonify({'success': False, 'message': "Admin foydalanuvchisi topilmadi!"}), 404
+
+    # Eski parolni tekshirish
+    if user['password_hash'] != hash_password(old_pwd):
         conn.close()
         return jsonify({'success': False, 'message': "Eski parol noto'g'ri kiritildi!"}), 400
 
-    cur.execute("UPDATE users SET password_hash = ? WHERE id = ?", (hash_password(new_pwd), user['id']))
+    new_hash = hash_password(new_pwd)
+    new_token = secrets.token_urlsafe(32)
+    expiry = (datetime.now() + timedelta(days=36500)).isoformat()
+
+    # 1. Barcha eski sessiyalarni bekor qilish (boshqa barcha qurilmalarda darhol yangi parol talab qilinadi!)
+    cur.execute("DELETE FROM user_tokens")
+    cur.execute("INSERT INTO user_tokens (token, expiry) VALUES (?, ?)", (new_token, expiry))
+
+    # 2. Users jadvalida yangi parol va joriy qurilma uchun yangi tokenni saqlash
+    cur.execute(
+        "UPDATE users SET password_hash = ?, token = ?, token_expiry = ? WHERE id = ?",
+        (new_hash, new_token, expiry, user['id'])
+    )
+
+    # 3. Telegram botdagi admin sessiyalarini ham tozalash (bot ham yangi parol so'raydi)
+    try:
+        cur.execute("DELETE FROM bot_admins")
+    except Exception:
+        pass
+
     conn.commit()
     conn.close()
 
-    return jsonify({'success': True, 'message': "Admin paroli muvaffaqiyatli o'zgartirildi!"})
+    return jsonify({
+        'success': True,
+        'new_token': new_token,
+        'message': "Admin paroli muvaffaqiyatli o'zgartirildi! Boshqa barcha qurilmalarda ham yangi parol kuchga kirdi."
+    })
 
 # ==============================================================================
 # DATA APIS (Barcha ma'lumotlarni saqlash va sinxronlash)

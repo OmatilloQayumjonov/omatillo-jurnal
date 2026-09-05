@@ -1308,6 +1308,12 @@ class JurnalApp {
             window.storage.updateConnectionBadge(true);
             return true;
           }
+        } else if (res.status === 401) {
+          // Boshqa qurilmada parol o'zgartirilgan bo'lsa, ushbu qurilmadagi eski sessiyani bekor qilish!
+          localStorage.removeItem(STORAGE_KEYS.AUTH_TOKEN);
+          localStorage.removeItem('jurnal_auth_logged_in');
+          window.storage.token = '';
+          return false;
         }
       } catch (err) {
         console.warn("Server tekshiruvida tarmoq xatoligi:", err);
@@ -1316,8 +1322,6 @@ class JurnalApp {
           return true;
         }
       }
-    } else if (isOfflineLogged) {
-      return true;
     }
 
     return false;
@@ -1488,8 +1492,12 @@ class JurnalApp {
 
         const json = await res.json();
         if (res.ok && json.success) {
+          if (json.new_token) {
+            localStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, json.new_token);
+            window.storage.token = json.new_token;
+          }
           localStorage.setItem('jurnal_offline_pass', newPassword);
-          this.showToast("Admin paroli muvaffaqiyatli yangilandi!", "success");
+          this.showToast("Admin paroli o'zgartirildi! Boshqa barcha qurilmalarda ham yangi parol kuchga kirdi. ✅", "success");
           if (oldPassInput) oldPassInput.value = '';
           if (newPassInput) newPassInput.value = '';
           if (confirmPassInput) confirmPassInput.value = '';

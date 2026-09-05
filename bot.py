@@ -170,8 +170,8 @@ def get_all_bindings() -> List[sqlite3.Row]:
 
 def verify_admin_password(password: str) -> bool:
     pwd = str(password).strip()
-    if pwd.lower() in ('admin123', 'admin'):
-        return True
+    if not pwd:
+        return False
     try:
         pwd_hash = hashlib.sha256(pwd.encode('utf-8')).hexdigest()
         conn = get_db()
@@ -180,7 +180,8 @@ def verify_admin_password(password: str) -> bool:
         row = cur.fetchone()
         conn.close()
         return row is not None
-    except Exception:
+    except Exception as e:
+        logger.error(f"verify_admin_password error: {e}")
         return False
 
 def is_admin(telegram_id: int) -> bool:
