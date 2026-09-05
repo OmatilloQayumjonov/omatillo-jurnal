@@ -199,12 +199,7 @@ def check_auth_token():
     if not row:
         return False
 
-    expiry_str = row[0]
-    if expiry_str:
-        expiry = datetime.fromisoformat(expiry_str)
-        if datetime.now() > expiry:
-            return False
-
+    # Sessiya muddati cheksiz (doimiy) — hech qachon eskirib qolmaydi
     return True
 
 @app.route('/api/auth/login', methods=['POST'])
