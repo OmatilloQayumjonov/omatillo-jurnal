@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: omatillo-jurnal
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python run.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 8619177051:AAEuxtkHtGdkeF-25elZeYUZPlVcyYutWfQ
+      - key: PYTHON_VERSION
+        value: 3.11.8

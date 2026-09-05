@@ -10,9 +10,9 @@ echo.
 
 where py >nul 2>nul
 if %ERRORLEVEL% EQU 0 (
-    py -3 bot.py
+    py -3 run.py
 ) else (
-    python bot.py
+    python run.py
 )
 
 if %ERRORLEVEL% NEQ 0 (

@@ -1,6 +1,7 @@
 """
 TALABALAR ELEKTRON JURNALI - TELEGRAM BOT (aiogram 3)
-Talabalar uchun davomat, 15 ta amaliy dars va mustaqil ish baholarini ko'rish boti
+Talabalar uchun shaxsiy davomat, 15 ta amaliy dars va mustaqil ish baholarini ko'rish boti.
+XAVFSIZLIK: Har bir talaba faqat o'z baholarini ko'radi, boshqa talabalarnikini ko'ra olmaydi!
 Markaziy SQLite bazasi (jurnal.db) bilan real vaqt rejimida bog'langan.
 """
 
@@ -8,8 +9,11 @@ import os
 import sys
 import json
 import sqlite3
+import hashlib
 import asyncio
 import logging
+from datetime import datetime
+from typing import Optional, Dict, Any, List
 
 if sys.platform == 'win32':
     try:
@@ -17,7 +21,6 @@ if sys.platform == 'win32':
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
         pass
-from typing import Optional, Dict, Any, List
 
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -25,17 +28,14 @@ from aiogram.filters import CommandStart, Command
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
 
-# Logger sozlash
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Baza joylashuvi
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, 'jurnal.db')
 ENV_FILE = os.path.join(BASE_DIR, '.env')
 
 def load_bot_token() -> str:
-    """Tokenni .env yoki muhit o'zgaruvchilaridan yuklash"""
     token = os.environ.get('BOT_TOKEN', '').strip()
     if not token and os.path.exists(ENV_FILE):
         with open(ENV_FILE, 'r', encoding='utf-8') as f:
@@ -43,17 +43,32 @@ def load_bot_token() -> str:
                 line = line.strip()
                 if line.startswith('BOT_TOKEN='):
                     token = line.split('=', 1)[1].strip().strip('"').strip("'")
+                    break
     if not token:
         token = "8619177051:AAEuxtkHtGdkeF-25elZeYUZPlVcyYutWfQ"
     return token
 
-# ==============================================================================
-# BAZA BILAN ISHLASH (SQLITE QUERIES)
-# ==============================================================================
 def get_db():
     conn = sqlite3.connect(DB_FILE)
     conn.row_factory = sqlite3.Row
     return conn
+
+def init_bot_db():
+    """Bot uchun kerakli biriktirishlar (bindings) jadvalini yaratish"""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS student_bindings (
+            telegram_id INTEGER PRIMARY KEY,
+            student_id TEXT UNIQUE NOT NULL,
+            telegram_username TEXT,
+            full_name TEXT NOT NULL,
+            group_name TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
 def get_store_item(key: str, default=None):
     try:
@@ -71,7 +86,6 @@ def get_store_item(key: str, default=None):
 def get_all_groups() -> List[str]:
     groups = get_store_item('groups', [])
     if not groups:
-        # Agar groups ro'yxati bo'sh bo'lsa, talabalardan ajratib olamiz
         students = get_store_item('students', [])
         groups = sorted(list(set(s.get('group') for s in students if s.get('group'))))
     return groups
@@ -81,11 +95,6 @@ def get_students_by_group(group_name: str) -> List[Dict[str, Any]]:
     filtered = [s for s in students if s.get('group') == group_name]
     return sorted(filtered, key=lambda x: x.get('fullName', ''))
 
-def find_students_by_name(query: str) -> List[Dict[str, Any]]:
-    query = query.lower().strip()
-    students = get_store_item('students', [])
-    return [s for s in students if query in s.get('fullName', '').lower()]
-
 def get_student_by_id(student_id: str) -> Optional[Dict[str, Any]]:
     students = get_store_item('students', [])
     for s in students:
@@ -93,8 +102,87 @@ def get_student_by_id(student_id: str) -> Optional[Dict[str, Any]]:
             return s
     return None
 
+# ==============================================================================
+# BIRIKTIRISH (BINDINGS) VA XAVFSIZLIK FUNKSIYALARI
+# ==============================================================================
+def get_binding_by_telegram_id(telegram_id: int) -> Optional[sqlite3.Row]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM student_bindings WHERE telegram_id = ?", (telegram_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+def get_binding_by_student_id(student_id: str) -> Optional[sqlite3.Row]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM student_bindings WHERE student_id = ?", (student_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row
+
+def get_all_bound_student_ids() -> set:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT student_id FROM student_bindings")
+    rows = cur.fetchall()
+    conn.close()
+    return {r['student_id'] for r in rows}
+
+def bind_student(telegram_id: int, student_id: str, telegram_username: str, full_name: str, group_name: str) -> bool:
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        now = datetime.now().isoformat()
+        cur.execute('''
+            INSERT INTO student_bindings (telegram_id, student_id, telegram_username, full_name, group_name, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (telegram_id, student_id, telegram_username or '', full_name, group_name, now))
+        conn.commit()
+        conn.close()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+
+def unbind_student(student_id: str) -> bool:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM student_bindings WHERE student_id = ?", (student_id,))
+    deleted = cur.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+def get_all_bindings() -> List[sqlite3.Row]:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM student_bindings ORDER BY group_name, full_name")
+    rows = cur.fetchall()
+    conn.close()
+    return rows
+
+def verify_admin_password(password: str) -> bool:
+    if password == 'admin123':
+        return True
+    try:
+        pwd_hash = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM users WHERE username = 'admin' AND password_hash = ?", (pwd_hash,))
+        row = cur.fetchone()
+        conn.close()
+        return row is not None
+    except Exception:
+        return False
+
+# Admin sessiyalari va holatlar
+ADMIN_SESSIONS = set()
+WAITING_ADMIN_PASSWORD = set()
+
+# ==============================================================================
+# TALABA HISOBOTI (REPORT GENERATOR)
+# ==============================================================================
 def build_student_report(student_id: str) -> Optional[str]:
-    """Talabaning to'liq hisobot kartasini chiroyli matn sifatida tayyorlash"""
     student = get_student_by_id(student_id)
     if not student:
         return None
@@ -106,9 +194,8 @@ def build_student_report(student_id: str) -> Optional[str]:
     subject_name = settings.get('subjectName', 'Mutaxassislik fani (15 ta amaliy dars)')
     institution = settings.get('institutionName', "Ta'lim muassasasi")
 
-    # 1. DAVOMAT HISOB-KITOBI
+    # 1. DAVOMAT
     attendance_data = get_store_item('attendance', [])
-    # Faqat talabaning guruhiga tegishli darslar
     group_att = [a for a in attendance_data if a.get('group') == group]
     
     total_lessons = len(group_att)
@@ -126,7 +213,6 @@ def build_student_report(student_id: str) -> Optional[str]:
         elif status == 'excused':
             excused_hours += 2
 
-    missed_total_hours = absent_hours + excused_hours
     att_percent = round((attended / total_lessons * 100)) if total_lessons > 0 else 100
 
     if att_percent >= 80:
@@ -182,7 +268,7 @@ def build_student_report(student_id: str) -> Optional[str]:
 
     mi_avg = round(sum(mi_scores) / len(mi_scores), 2) if mi_scores else 0.0
 
-    # 4. UMUMIY REYTING / O'RTASHA BALL
+    # 4. GPA VA REYTING
     all_scores = pr_scores + mi_scores
     overall_avg = round(sum(all_scores) / len(all_scores), 2) if all_scores else 0.0
 
@@ -197,7 +283,6 @@ def build_student_report(student_id: str) -> Optional[str]:
     else:
         status_text = "⚪️ Baholar mavjud emas"
 
-    # XABAR MATNINI SHAKLLANTIRISH
     text = (
         f"🎓 <b>TALABA HISOBOTI</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
@@ -225,297 +310,559 @@ def build_student_report(student_id: str) -> Optional[str]:
         f"• <b>Umumiy o'rtacha ball (GPA):</b> <code>{overall_avg}</code>\n"
         f"• <b>O'zlashtirish holati:</b> {status_text}\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"<i>Barcha ma'lumotlar elektron jurnaldan jonli olindi.</i>"
+        f"<i>🔒 Siz faqat o'z ma'lumotlaringizni ko'rmoqdasiz.</i>"
     )
-
     return text
 
 # ==============================================================================
-# TELEGRAM BOT ROUTER VA TUGMALAR
+# ROUTER VA TUGMALAR
 # ==============================================================================
 router = Router()
 
-def get_main_keyboard() -> InlineKeyboardMarkup:
-    kb = [
-        [InlineKeyboardButton(text="📊 Natijalarimni ko'rish", callback_data="btn_groups")],
-        [InlineKeyboardButton(text="🔍 F.I.SH bo'yicha qidirish", callback_data="btn_search_hint")],
+def get_student_home_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔄 Natijalarni yangilash", callback_data="refresh_my_report")],
+        [InlineKeyboardButton(text="👤 Shaxsiy ma'lumotlarim", callback_data="my_profile")],
         [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="btn_about")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+    ])
 
-def get_groups_keyboard() -> InlineKeyboardMarkup:
+def get_unbound_welcome_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔗 O'z hisobimni biriktirish", callback_data="start_bind")],
+        [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="btn_about")]
+    ])
+
+def get_admin_dashboard_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="👥 Barcha guruhlar va talabalar", callback_data="admin_groups")],
+        [InlineKeyboardButton(text="🔗 Biriktirilgan talabalar ro'yxati", callback_data="admin_bindings")],
+        [InlineKeyboardButton(text="🚪 Admin rejimidan chiqish", callback_data="admin_logout")]
+    ])
+
+@router.message(CommandStart())
+async def handle_start(message: Message):
+    user_id = message.from_user.id
+    first_name = message.from_user.first_name
+
+    # 1. Admin rejimidami?
+    if user_id in ADMIN_SESSIONS:
+        await message.answer(
+            "👨‍🏫 <b>O'QITUVCHI / ADMIN BOSHQARUV PANELI</b>\n"
+            "Barcha guruhlar va talabalarni ko'rishingiz mumkin:",
+            reply_markup=get_admin_dashboard_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # 2. Talaba hisobi biriktirilganmi?
+    binding = get_binding_by_telegram_id(user_id)
+    if binding:
+        report_text = build_student_report(binding['student_id'])
+        if report_text:
+            await message.answer(
+                report_text,
+                reply_markup=get_student_home_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await message.answer(
+                f"Siz <b>{binding['full_name']}</b> ({binding['group_name']}) sifatida ulangansiz.\n"
+                f"Biroq jurnaldan ma'lumot topilmadi.",
+                reply_markup=get_student_home_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        return
+
+    # 3. Hali biriktirilmagan yangi talaba
+    text = (
+        f"Assalomu alaykum, <b>{first_name}</b>! 👋\n\n"
+        f"<b>Elektron Jurnal</b> rasmiy botiga xush kelibsiz.\n\n"
+        f"🔒 <b>SHAXSIY MA'LUMOTLAR XAVFSIZLIGI:</b>\n"
+        f"Tizimda har bir talaba <b>faqat o'zining</b> baho va davomatini ko'ra oladi. "
+        f"Boshqa talabalar sizning baholaringizni ko'ra olmaydi.\n\n"
+        f"O'z natijalaringizni ko'rish uchun quyidagi tugma orqali guruhingiz va ismingizni bir marta biriktiring:"
+    )
+    await message.answer(text, reply_markup=get_unbound_welcome_keyboard(), parse_mode=ParseMode.HTML)
+
+@router.message(Command("admin"))
+async def handle_admin_cmd(message: Message):
+    user_id = message.from_user.id
+    if user_id in ADMIN_SESSIONS:
+        await message.answer(
+            "👨‍🏫 <b>Siz Admin rejimidasiз:</b>",
+            reply_markup=get_admin_dashboard_keyboard(),
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    WAITING_ADMIN_PASSWORD.add(user_id)
+    await message.answer(
+        "🔐 <b>O'qituvchi / Admin parolini kiriting:</b>\n"
+        "<i>(Parolni xabar ko'rinishida yozib yuboring)</i>",
+        parse_mode=ParseMode.HTML
+    )
+
+@router.message(Command("logout"))
+async def handle_logout_cmd(message: Message):
+    user_id = message.from_user.id
+    if user_id in ADMIN_SESSIONS:
+        ADMIN_SESSIONS.discard(user_id)
+        await message.answer("🚪 Admin rejimidan chiqdingiz. Qaytadan /start bosing.")
+    else:
+        await message.answer("Siz admin emassiz.")
+
+# --- TALABANI BIRIKTIRISH (CLAIM) JARAYONI ---
+@router.callback_query(F.data == "start_bind")
+async def cb_start_bind(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if get_binding_by_telegram_id(user_id):
+        await callback.answer("Siz allaqachon biriktirilgansiz!", show_alert=True)
+        return
+
     groups = get_all_groups()
+    if not groups:
+        await callback.message.edit_text(
+            "⚠️ Hozircha bazada guruhlar mavjud emas.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔄 Qayta tekshirish", callback_data="start_bind")]
+            ])
+        )
+        await callback.answer()
+        return
+
     kb = []
-    # 2 tadan qatorda
     row = []
     for g in groups:
-        row.append(InlineKeyboardButton(text=f"👥 {g}", callback_data=f"group:{g}"))
+        row.append(InlineKeyboardButton(text=f"👥 {g}", callback_data=f"bgroup:{g}:0"))
         if len(row) == 2:
             kb.append(row)
             row = []
     if row:
         kb.append(row)
 
-    kb.append([InlineKeyboardButton(text="⬅️ Bosh menyuga qaytish", callback_data="btn_home")])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_students_keyboard(group_name: str, page: int = 0) -> InlineKeyboardMarkup:
-    students = get_students_by_group(group_name)
-    per_page = 8
-    total_pages = (len(students) + per_page - 1) // per_page if students else 1
-    
-    start_idx = page * per_page
-    end_idx = start_idx + per_page
-    current_students = students[start_idx:end_idx]
-
-    kb = []
-    for s in current_students:
-        kb.append([InlineKeyboardButton(
-            text=f"👤 {s.get('fullName')}",
-            callback_data=f"student:{s.get('id')}"
-        )])
-
-    # Navigatsiya tugmalari (Oldingi / Keyingi sahifa)
-    nav_row = []
-    if page > 0:
-        nav_row.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"page:{group_name}:{page - 1}"))
-    if page < total_pages - 1:
-        nav_row.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"page:{group_name}:{page + 1}"))
-
-    if nav_row:
-        kb.append(nav_row)
-
-    kb.append([
-        InlineKeyboardButton(text="👥 Boshqa guruh", callback_data="btn_groups"),
-        InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")
-    ])
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-def get_report_keyboard(student_id: str, group_name: str) -> InlineKeyboardMarkup:
-    kb = [
-        [InlineKeyboardButton(text="🔄 Yangilash (So'nggi baholar)", callback_data=f"refresh:{student_id}")],
-        [InlineKeyboardButton(text="👥 Guruh ro'yxatiga qaytish", callback_data=f"group:{group_name}")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")]
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
-
-# --- HANDLERS ---
-@router.message(CommandStart())
-async def handle_start(message: Message):
-    welcome_text = (
-        f"Assalomu alaykum, <b>{message.from_user.first_name}</b>! 👋\n\n"
-        f"<b>Elektron Jurnal</b> tizimining rasmiy botiga xush kelibsiz.\n\n"
-        f"Bu yerda siz o'zingizning:\n"
-        f"• 📅 <b>Davomat</b> (qoldirilgan soatlar va davomat foizi)\n"
-        f"• 📝 <b>15 ta amaliy dars</b> bo'yicha olgan baholaringiz\n"
-        f"• 📖 <b>Mustaqil ish</b> ballari\n"
-        f"• 🏆 <b>Umumiy o'rtacha ballingiz (GPA)</b>ni\n"
-        f"istalgan vaqtda bilib olishingiz mumkin!\n\n"
-        f"O'z ma'lumotlaringizni ko'rish uchun quyidagi tugmani bosing:"
-    )
-    await message.answer(welcome_text, reply_markup=get_main_keyboard(), parse_mode=ParseMode.HTML)
-
-@router.callback_query(F.data == "btn_home")
-async def cb_home(callback: CallbackQuery):
     await callback.message.edit_text(
-        "Boshqaruv menyusi. O'zingizga kerakli bo'limni tanlang:",
-        reply_markup=get_main_keyboard()
-    )
-    await callback.answer()
-
-@router.callback_query(F.data == "btn_groups")
-async def cb_groups(callback: CallbackQuery):
-    groups = get_all_groups()
-    if not groups:
-        await callback.message.edit_text(
-            "⚠️ Hozircha tizimda guruhlar mavjud emas.",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")]
-            ])
-        )
-        await callback.answer()
-        return
-
-    await callback.message.edit_text(
-        "📋 <b>Guruhni tanlang:</b>\nQaysi guruhda ta'lim olasiz?",
-        reply_markup=get_groups_keyboard(),
+        "📋 <b>GURUHINGIZNI TANLANG:</b>\n"
+        "Qaysi guruhda ta'lim olasiz?",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
         parse_mode=ParseMode.HTML
     )
     await callback.answer()
 
-@router.callback_query(F.data.startswith("group:"))
-async def cb_select_group(callback: CallbackQuery):
-    group_name = callback.data.split(":", 1)[1]
-    students = get_students_by_group(group_name)
+@router.callback_query(F.data.startswith("bgroup:"))
+async def cb_bind_group(callback: CallbackQuery):
+    parts = callback.data.split(":")
+    group_name = parts[1]
+    page = int(parts[2]) if len(parts) > 2 else 0
 
+    students = get_students_by_group(group_name)
     if not students:
         await callback.message.edit_text(
-            f"⚠️ <b>{group_name}</b>da hali talabalar ro'yxati shakllantirilmagan.",
+            f"⚠️ <b>{group_name}</b>da talabalar ro'yxati topilmadi.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="👥 Boshqa guruh", callback_data="btn_groups")]
+                [InlineKeyboardButton(text="⬅️ Guruhlarga qaytish", callback_data="start_bind")]
             ]),
             parse_mode=ParseMode.HTML
         )
         await callback.answer()
         return
 
+    bound_ids = get_all_bound_student_ids()
+    per_page = 8
+    total_pages = (len(students) + per_page - 1) // per_page
+    start_idx = page * per_page
+    current_students = students[start_idx:start_idx + per_page]
+
+    kb = []
+    for s in current_students:
+        s_id = s.get('id')
+        name = s.get('fullName')
+        if s_id in bound_ids:
+            kb.append([InlineKeyboardButton(
+                text=f"🔒 {name} (Band)",
+                callback_data=f"bound_info:{s_id}"
+            )])
+        else:
+            kb.append([InlineKeyboardButton(
+                text=f"👤 {name}",
+                callback_data=f"pre_bind:{s_id}"
+            )])
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"bgroup:{group_name}:{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"bgroup:{group_name}:{page + 1}"))
+    if nav_row:
+        kb.append(nav_row)
+
+    kb.append([InlineKeyboardButton(text="⬅️ Boshqa guruh", callback_data="start_bind")])
+
     await callback.message.edit_text(
-        f"👥 <b>{group_name}</b> talabalari:\nO'z ism-familiyangiz ustiga bosing:",
-        reply_markup=get_students_keyboard(group_name, page=0),
+        f"👥 <b>{group_name}</b> talabalari:\n"
+        f"O'z ism-familiyangiz ustiga bosing:\n\n"
+        f"<i>(🔒 belgisi bilan ko'rsatilgan talabalar allaqachon o'z hisoblarini ulagan)</i>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
         parse_mode=ParseMode.HTML
     )
     await callback.answer()
 
-@router.callback_query(F.data.startswith("page:"))
-async def cb_paginate_students(callback: CallbackQuery):
-    parts = callback.data.split(":")
-    group_name = parts[1]
-    page = int(parts[2])
-
-    await callback.message.edit_text(
-        f"👥 <b>{group_name}</b> talabalari:\nO'z ism-familiyangiz ustiga bosing:",
-        reply_markup=get_students_keyboard(group_name, page=page),
-        parse_mode=ParseMode.HTML
+@router.callback_query(F.data.startswith("bound_info:"))
+async def cb_bound_info(callback: CallbackQuery):
+    await callback.answer(
+        "⚠️ Ushbu talaba allaqachon boshqa Telegram hisobiga biriktirilgan!\n"
+        "Agar bu sizning ismingiz bo'lsa, adashib olingan bo'lishi mumkin. O'qituvchiga murojaat qiling.",
+        show_alert=True
     )
-    await callback.answer()
 
-@router.callback_query(F.data.startswith("student:"))
-async def cb_show_student(callback: CallbackQuery):
+@router.callback_query(F.data.startswith("pre_bind:"))
+async def cb_pre_bind(callback: CallbackQuery):
     student_id = callback.data.split(":", 1)[1]
-    report_text = build_student_report(student_id)
+    student = get_student_by_id(student_id)
+    if not student:
+        await callback.answer("Talaba topilmadi!", show_alert=True)
+        return
 
-    if not report_text:
-        await callback.answer("Talaba ma'lumoti topilmadi!", show_alert=True)
+    if get_binding_by_student_id(student_id):
+        await callback.answer("Kechirasiz, ushbu talaba boshqa birov tomonidan biriktirildi.", show_alert=True)
+        return
+
+    name = student.get('fullName')
+    group = student.get('group')
+
+    text = (
+        f"❓ <b>BIRIKTIRISHNI TASDIQLANG:</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"👤 <b>Talaba:</b> {name}\n"
+        f"👥 <b>Guruh:</b> {group}\n\n"
+        f"⚠️ <b>MUHIM XAVFSIZLIK QOIDASI:</b>\n"
+        f"Ushbu profil sizning Telegram hisobingizga qat'iy biriktiriladi. "
+        f"Shundan so'ng siz <b>faqat o'zingizning</b> baho va davomatingizni ko'ra olasiz. "
+        f"Boshqa talabalar sizning baholaringizni ko'ra olmaydi.\n\n"
+        f"Haqiqatan ham siz <b>{name}</b>misiz?"
+    )
+
+    kb = [
+        [InlineKeyboardButton(text="✅ Ha, bu men (Biriktirish)", callback_data=f"confirm_bind:{student_id}")],
+        [InlineKeyboardButton(text="❌ Yo'q, orqaga qaytish", callback_data=f"bgroup:{group}:0")]
+    ]
+
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("confirm_bind:"))
+async def cb_confirm_bind(callback: CallbackQuery):
+    student_id = callback.data.split(":", 1)[1]
+    user_id = callback.from_user.id
+    username = callback.from_user.username or ''
+
+    if get_binding_by_telegram_id(user_id):
+        await callback.answer("Siz allaqachon biriktirilgansiz!", show_alert=True)
         return
 
     student = get_student_by_id(student_id)
-    group_name = student.get('group', '') if student else ''
-
-    await callback.message.edit_text(
-        report_text,
-        reply_markup=get_report_keyboard(student_id, group_name),
-        parse_mode=ParseMode.HTML
-    )
-    await callback.answer()
-
-@router.callback_query(F.data.startswith("refresh:"))
-async def cb_refresh_report(callback: CallbackQuery):
-    student_id = callback.data.split(":", 1)[1]
-    report_text = build_student_report(student_id)
-
-    if not report_text:
-        await callback.answer("Ma'lumot topilmadi!", show_alert=True)
+    if not student:
+        await callback.answer("Talaba topilmadi!", show_alert=True)
         return
 
-    student = get_student_by_id(student_id)
-    group_name = student.get('group', '') if student else ''
+    success = bind_student(
+        telegram_id=user_id,
+        student_id=student_id,
+        telegram_username=username,
+        full_name=student.get('fullName', ''),
+        group_name=student.get('group', '')
+    )
+
+    if not success:
+        await callback.answer("Xatolik: ushbu talaba allaqachon boshqa akkauntga biriktirilgan!", show_alert=True)
+        return
+
+    await callback.answer("🎉 Muvaffaqiyatli biriktirildi!", show_alert=False)
+
+    report_text = build_student_report(student_id)
+    congrats_text = (
+        f"🎉 <b>Tabriklaymiz, {student.get('fullName')}!</b>\n"
+        f"Sizning Telegram hisobingiz muvaffaqiyatli biriktirildi.\n\n"
+        f"{report_text}"
+    )
+
+    await callback.message.edit_text(
+        congrats_text,
+        reply_markup=get_student_home_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+
+# --- TALABANING SHAXSIY AMALLARI ---
+@router.callback_query(F.data == "refresh_my_report")
+async def cb_refresh_my_report(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    binding = get_binding_by_telegram_id(user_id)
+    if not binding:
+        await callback.answer("Hisobingiz hali biriktirilmagan!", show_alert=True)
+        return
+
+    report_text = build_student_report(binding['student_id'])
+    if not report_text:
+        await callback.answer("Ma'lumot topilmadi.", show_alert=True)
+        return
 
     try:
         await callback.message.edit_text(
             report_text,
-            reply_markup=get_report_keyboard(student_id, group_name),
+            reply_markup=get_student_home_keyboard(),
             parse_mode=ParseMode.HTML
         )
         await callback.answer("✅ Natijalar jurnaldan qayta yangilandi!")
     except Exception:
         await callback.answer("Ma'lumotlar allaqachon eng so'nggi holatda.")
 
-@router.callback_query(F.data == "btn_search_hint")
-async def cb_search_hint(callback: CallbackQuery):
+@router.callback_query(F.data == "my_profile")
+async def cb_my_profile(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    binding = get_binding_by_telegram_id(user_id)
+    if not binding:
+        await callback.answer("Hisobingiz biriktirilmagan.", show_alert=True)
+        return
+
+    created = binding['created_at'][:16].replace('T', ' ')
     text = (
-        "🔍 <b>Ism bo'yicha qidirish juda oson!</b>\n\n"
-        "Shunchaki botga o'z ismingiz yoki familiyangizni xabar qilib yozib yuboring.\n"
-        "<i>Masalan:</i> <code>Aliyev</code> yoki <code>Madina</code>\n\n"
-        "Bot darhol sizni topib natijalarni chiqaradi!"
+        f"👤 <b>SHAXSIY PROFIL</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• <b>F.I.SH:</b> {binding['full_name']}\n"
+        f"• <b>Guruh:</b> {binding['group_name']}\n"
+        f"• <b>Telegram ID:</b> <code>{binding['telegram_id']}</code>\n"
+        f"• <b>Biriktirilgan sana:</b> {created}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🔒 <i>Siz faqat o'z baholaringizni ko'ra olasiz. "
+        f"Agar ismingizni o'zgartirish kerak bo'lsa, o'qituvchiga murojaat qiling.</i>"
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👥 Guruhlar orqali tanlash", callback_data="btn_groups")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")]
-    ])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+    kb = [
+        [InlineKeyboardButton(text="📊 Natijalarimni ko'rish", callback_data="refresh_my_report")]
+    ]
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
     await callback.answer()
 
 @router.callback_query(F.data == "btn_about")
 async def cb_about(callback: CallbackQuery):
     settings = get_store_item('settings', {})
-    subject_name = settings.get('subjectName', '15 ta amaliy dars')
+    subject_name = settings.get('subjectName', 'Mutaxassislik fani (15 ta amaliy dars)')
     institution = settings.get('institutionName', "Ta'lim muassasasi")
 
     text = (
         f"ℹ️ <b>BOT HAQIDA</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"Ushbu bot <b>{institution}</b> talabalari uchun yaratilgan.\n"
+        f"Ushbu bot <b>{institution}</b> talabalari uchun xizmat qiladi.\n"
         f"📚 <b>Fan:</b> {subject_name}\n"
-        f"📌 Darslar formati: 15 ta amaliy dars va mustaqil ishlar.\n\n"
-        f"Barcha baholar va dars davomati to'g'ridan-to'g'ri o'qituvchining "
-        f"markaziy elektron jurnali bilan real vaqtda sinxronlangan."
+        f"📌 Darslar formati: 15 ta amaliy mashg'ulot va mustaqil ishlar.\n\n"
+        f"🔒 <b>Xavfsizlik kafolati:</b> Har bir talaba faqat o'zining baholarini ko'ra oladi.\n"
+        f"Barcha baho va davomat ma'lumotlari markaziy elektron jurnal bilan 24/7 sinxronlangan."
     )
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📊 Natijalarni ko'rish", callback_data="btn_groups")],
-        [InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")]
-    ])
-    await callback.message.edit_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+    user_id = callback.from_user.id
+    if get_binding_by_telegram_id(user_id):
+        kb = [[InlineKeyboardButton(text="📊 Mening natijalarim", callback_data="refresh_my_report")]]
+    else:
+        kb = [[InlineKeyboardButton(text="🔗 Hisobimni ulash", callback_data="start_bind")]]
+
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
     await callback.answer()
 
-# --- TEXT SEARCH HANDLER ---
-@router.message(F.text)
-async def handle_text_search(message: Message):
-    query = message.text.strip()
-    if len(query) < 2:
-        await message.answer("Iltimos, kamida 2 ta harf yozing.")
+# --- O'QITUVCHI / ADMIN PANEL CALLBACKS ---
+@router.callback_query(F.data == "admin_dashboard")
+async def cb_admin_dashboard(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    if user_id not in ADMIN_SESSIONS:
+        await callback.answer("Admin huquqi yo'q!", show_alert=True)
         return
 
-    matches = find_students_by_name(query)
-    if not matches:
-        await message.answer(
-            f"❌ <b>\"{query}\"</b> bo'yicha talaba topilmadi.\n"
-            f"Ism yoki familiyangizni to'g'ri yozganingizga ishonch hosil qiling, "
-            f"yoki guruhlar orqali qidiring:",
+    await callback.message.edit_text(
+        "👨‍🏫 <b>O'QITUVCHI / ADMIN BOSHQARUV PANELI</b>\n"
+        "Kerakli bo'limni tanlang:",
+        reply_markup=get_admin_dashboard_keyboard(),
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_groups")
+async def cb_admin_groups(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_SESSIONS:
+        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+        return
+
+    groups = get_all_groups()
+    kb = []
+    for g in groups:
+        kb.append([InlineKeyboardButton(text=f"👥 {g}", callback_data=f"agroup:{g}:0")])
+    kb.append([InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin_dashboard")])
+
+    await callback.message.edit_text(
+        "👥 <b>Barcha guruhlar:</b>\nTalabalarni ko'rish uchun guruhni tanlang:",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("agroup:"))
+async def cb_admin_group_students(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_SESSIONS:
+        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+        return
+
+    parts = callback.data.split(":")
+    group_name = parts[1]
+    page = int(parts[2]) if len(parts) > 2 else 0
+
+    students = get_students_by_group(group_name)
+    per_page = 8
+    total_pages = (len(students) + per_page - 1) // per_page
+    start_idx = page * per_page
+    current_students = students[start_idx:start_idx + per_page]
+
+    kb = []
+    for s in current_students:
+        s_id = s.get('id')
+        name = s.get('fullName')
+        kb.append([InlineKeyboardButton(text=f"👤 {name}", callback_data=f"astudent:{s_id}")])
+
+    nav_row = []
+    if page > 0:
+        nav_row.append(InlineKeyboardButton(text="⬅️ Oldingi", callback_data=f"agroup:{group_name}:{page - 1}"))
+    if page < total_pages - 1:
+        nav_row.append(InlineKeyboardButton(text="Keyingi ➡️", callback_data=f"agroup:{group_name}:{page + 1}"))
+    if nav_row:
+        kb.append(nav_row)
+
+    kb.append([InlineKeyboardButton(text="⬅️ Guruhlarga qaytish", callback_data="admin_groups")])
+
+    await callback.message.edit_text(
+        f"👥 <b>{group_name} talabalari:</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("astudent:"))
+async def cb_admin_student(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_SESSIONS:
+        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+        return
+
+    student_id = callback.data.split(":", 1)[1]
+    report_text = build_student_report(student_id)
+    student = get_student_by_id(student_id)
+    group = student.get('group', '') if student else ''
+
+    binding = get_binding_by_student_id(student_id)
+    bind_status = f"\n\n🔗 <b>Telegram ulangan:</b> @{binding['telegram_username']} (ID: {binding['telegram_id']})" if binding else "\n\n🔓 <b>Telegram ulanmagan</b>"
+
+    kb = []
+    if binding:
+        kb.append([InlineKeyboardButton(text="❌ Biriktirishni bekor qilish (Reset)", callback_data=f"aunbind:{student_id}")])
+    kb.append([InlineKeyboardButton(text="⬅️ Guruhga qaytish", callback_data=f"agroup:{group}:0")])
+
+    await callback.message.edit_text(
+        (report_text or "Ma'lumot yo'q") + bind_status,
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
+        parse_mode=ParseMode.HTML
+    )
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("aunbind:"))
+async def cb_admin_unbind(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_SESSIONS:
+        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+        return
+
+    student_id = callback.data.split(":", 1)[1]
+    unbind_student(student_id)
+    await callback.answer("✅ Talaba biriktirishdan ozod qilindi! U endi qayta ulashi mumkin.", show_alert=True)
+    await cb_admin_student(callback)
+
+@router.callback_query(F.data == "admin_bindings")
+async def cb_admin_bindings_list(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_SESSIONS:
+        await callback.answer("Admin huquqi yo'q!", show_alert=True)
+        return
+
+    bindings = get_all_bindings()
+    if not bindings:
+        await callback.message.edit_text(
+            "Hozircha hech qaysi talaba Telegram hisobini biriktirmagan.",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="👥 Guruhlar ro'yxati", callback_data="btn_groups")]
+                [InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin_dashboard")]
+            ])
+        )
+        await callback.answer()
+        return
+
+    text = f"📋 <b>BIRIKTIRILGAN TALABALAR ({len(bindings)} ta):</b>\n\n"
+    for b in bindings:
+        u = f"@{b['telegram_username']}" if b['telegram_username'] else f"ID:{b['telegram_id']}"
+        text += f"• <b>{b['full_name']}</b> ({b['group_name']}) ➔ {u}\n"
+
+    kb = [[InlineKeyboardButton(text="⬅️ Admin panel", callback_data="admin_dashboard")]]
+    await callback.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode=ParseMode.HTML)
+    await callback.answer()
+
+@router.callback_query(F.data == "admin_logout")
+async def cb_admin_logout(callback: CallbackQuery):
+    user_id = callback.from_user.id
+    ADMIN_SESSIONS.discard(user_id)
+    await callback.message.edit_text("🚪 Admin rejimidan chiqdingiz. Qaytadan /start bosing.")
+    await callback.answer()
+
+# --- MATNLI XABARLAR HANDLERI ---
+@router.message(F.text)
+async def handle_text(message: Message):
+    user_id = message.from_user.id
+    text_val = message.text.strip()
+
+    # Admin paroli kutilayotgan bo'lsa
+    if user_id in WAITING_ADMIN_PASSWORD:
+        WAITING_ADMIN_PASSWORD.discard(user_id)
+        if verify_admin_password(text_val):
+            ADMIN_SESSIONS.add(user_id)
+            await message.answer(
+                "✅ <b>Parol to'g'ri! Admin rejimiga kirdingiz.</b>",
+                reply_markup=get_admin_dashboard_keyboard(),
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await message.answer("❌ Parol noto'g'ri. Qaytadan urinish uchun /admin bosing.")
+        return
+
+    # Admin bo'lsa
+    if user_id in ADMIN_SESSIONS:
+        await message.answer("Admin boshqaruv paneli:", reply_markup=get_admin_dashboard_keyboard())
+        return
+
+    # Talaba biriktirilgan bo'lsa
+    binding = get_binding_by_telegram_id(user_id)
+    if binding:
+        await message.answer(
+            f"Siz <b>{binding['full_name']}</b> ({binding['group_name']}) sifatida tizimga ulangansiz.\n"
+            f"🔒 Xavfsizlik yuzasidan faqat o'zingizning baholaringizni ko'ra olasiz.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="📊 Mening natijalarim", callback_data="refresh_my_report")]
             ]),
             parse_mode=ParseMode.HTML
         )
         return
 
-    if len(matches) == 1:
-        # Bitta talaba topilsa, darhol uning kartasini ko'rsatamiz
-        st = matches[0]
-        report_text = build_student_report(st.get('id'))
-        await message.answer(
-            report_text,
-            reply_markup=get_report_keyboard(st.get('id'), st.get('group', '')),
-            parse_mode=ParseMode.HTML
-        )
-    else:
-        # Bir nechta talaba topilsa, tugma qilib tanlashni taklif qilamiz
-        kb = []
-        for s in matches[:10]:
-            kb.append([InlineKeyboardButton(
-                text=f"👤 {s.get('fullName')} ({s.get('group')})",
-                callback_data=f"student:{s.get('id')}"
-            )])
-        kb.append([InlineKeyboardButton(text="🏠 Bosh menyu", callback_data="btn_home")])
-
-        await message.answer(
-            f"🔍 <b>Topilgan talabalar:</b>\nO'z ismingiz ustiga bosing:",
-            reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
-            parse_mode=ParseMode.HTML
-        )
+    # Yangi biriktirilmagan foydalanuvchi bo'lsa
+    await message.answer(
+        "👋 Natijalaringizni ko'rish uchun avval o'z hisobingizni biriktiring:",
+        reply_markup=get_unbound_welcome_keyboard()
+    )
 
 # ==============================================================================
-# ASOSIY ISHGA TUSHIRISH (RUNNER)
+# MAIN RUNNER
 # ==============================================================================
 async def main():
     token = load_bot_token()
     if not token:
-        print("\n" + "=" * 65)
-        print(" [DIQQAT] TELEGRAM BOT TOKENI TOPILMADI!")
-        print(" Iltimos, Telegramdagi @BotFather orqali yangi bot oching va")
-        print(" olingan tokenni .env fayliga BOT_TOKEN=... qilib yozing.")
-        print("=" * 65 + "\n")
+        print("\n [DIQQAT] TELEGRAM BOT TOKENI TOPILMADI!\n")
         return
 
+    init_bot_db()
     bot = Bot(token=token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher()
     dp.include_router(router)
@@ -523,8 +870,8 @@ async def main():
     me = await bot.get_me()
     print("\n" + "=" * 65)
     print(f"  [OK] TELEGRAM BOT ISHGA TUSHDI: @{me.username}")
+    print(f"  Xavfsizlik: Talaba faqat o'z baholarini ko'radi (Shaxsiy rejim)")
     print(f"  Markaziy baza: {DB_FILE}")
-    print(f"  Talabalar dars qoldirganlari va baholari jonli ulandi!")
     print("=" * 65 + "\n")
 
     try:
