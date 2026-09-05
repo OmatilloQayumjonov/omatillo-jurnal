@@ -10,6 +10,13 @@ import json
 import sqlite3
 import asyncio
 import logging
+
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
 from typing import Optional, Dict, Any, List
 
 from aiogram import Bot, Dispatcher, Router, F
@@ -36,7 +43,8 @@ def load_bot_token() -> str:
                 line = line.strip()
                 if line.startswith('BOT_TOKEN='):
                     token = line.split('=', 1)[1].strip().strip('"').strip("'")
-                    break
+    if not token:
+        token = "8619177051:AAEuxtkHtGdkeF-25elZeYUZPlVcyYutWfQ"
     return token
 
 # ==============================================================================
@@ -514,7 +522,7 @@ async def main():
 
     me = await bot.get_me()
     print("\n" + "=" * 65)
-    print(f"  🤖 TELEGRAM BOT ISHGA TUSHDI: @{me.username}")
+    print(f"  [OK] TELEGRAM BOT ISHGA TUSHDI: @{me.username}")
     print(f"  Markaziy baza: {DB_FILE}")
     print(f"  Talabalar dars qoldirganlari va baholari jonli ulandi!")
     print("=" * 65 + "\n")
