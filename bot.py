@@ -826,7 +826,10 @@ async def cb_admin_student(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=kb),
         parse_mode=ParseMode.HTML
     )
-    await callback.answer()
+    try:
+        await callback.answer()
+    except Exception:
+        pass
 
 @router.callback_query(F.data.startswith("aunbind:"))
 async def cb_admin_unbind(callback: CallbackQuery):
