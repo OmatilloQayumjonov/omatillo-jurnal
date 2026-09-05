@@ -13,10 +13,11 @@ import secrets
 from datetime import datetime, timedelta
 from flask import Flask, request, jsonify, send_from_directory
 
-app = Flask(__name__, static_folder='.')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app = Flask(__name__, static_folder=BASE_DIR)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
-DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'jurnal.db')
+DB_FILE = os.path.join(BASE_DIR, 'jurnal.db')
 
 def get_db():
     conn = sqlite3.connect(DB_FILE)
@@ -153,6 +154,10 @@ def seed_default_data():
         conn.commit()
 
     conn.close()
+
+# Modul yuklanganda bazani tekshirish va jadvallarni tayyorlash
+init_db()
+seed_default_data()
 
 # ==============================================================================
 # AUTHENTICATION (ADMIN LOGIN / TOKEN)
@@ -319,13 +324,14 @@ def api_reset_demo():
 # ==============================================================================
 @app.route('/')
 def serve_index():
-    return send_from_directory('.', 'index.html')
+    return send_from_directory(BASE_DIR, 'index.html')
 
 @app.route('/<path:path>')
 def serve_static(path):
-    if os.path.exists(path):
-        return send_from_directory('.', path)
-    return send_from_directory('.', 'index.html')
+    full_path = os.path.join(BASE_DIR, path)
+    if os.path.isfile(full_path):
+        return send_from_directory(BASE_DIR, path)
+    return send_from_directory(BASE_DIR, 'index.html')
 
 # ==============================================================================
 # MAIN ENTRYPOINT
