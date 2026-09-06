@@ -418,6 +418,18 @@ def api_bot_status():
 def serve_index():
     return send_from_directory(BASE_DIR, 'index.html')
 
+@app.route('/robots.txt')
+def serve_robots():
+    return send_from_directory(BASE_DIR, 'robots.txt', mimetype='text/plain')
+
+@app.route('/sitemap.xml')
+def serve_sitemap():
+    return send_from_directory(BASE_DIR, 'sitemap.xml', mimetype='application/xml')
+
+@app.route('/favicon.svg')
+def serve_favicon():
+    return send_from_directory(BASE_DIR, 'favicon.svg', mimetype='image/svg+xml')
+
 @app.route('/<path:path>')
 def serve_static(path):
     full_path = os.path.join(BASE_DIR, path)
