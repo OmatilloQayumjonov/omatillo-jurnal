@@ -430,6 +430,10 @@ def serve_sitemap():
 def serve_favicon():
     return send_from_directory(BASE_DIR, 'favicon.svg', mimetype='image/svg+xml')
 
+@app.route('/google77d840c61f83b08c.html')
+def serve_google_verification():
+    return 'google-site-verification: google77d840c61f83b08c.html', 200, {'Content-Type': 'text/html; charset=utf-8'}
+
 @app.route('/<path:path>')
 def serve_static(path):
     full_path = os.path.join(BASE_DIR, path)
