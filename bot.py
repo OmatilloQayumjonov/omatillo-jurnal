@@ -44,8 +44,6 @@ def load_bot_token() -> str:
                 if line.startswith('BOT_TOKEN='):
                     token = line.split('=', 1)[1].strip().strip('"').strip("'")
                     break
-    if not token:
-        token = "8619177051:AAEuxtkHtGdkeF-25elZeYUZPlVcyYutWfQ"
     return token
 
 def get_db():
