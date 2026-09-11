@@ -368,8 +368,26 @@ def build_student_report(student_id: str) -> Optional[str]:
 # ==============================================================================
 router = Router()
 
+def get_online_url() -> str:
+    render_url = os.environ.get('RENDER_EXTERNAL_URL')
+    if render_url:
+        return render_url
+
+    online_file = os.path.join(BASE_DIR, 'ONLINE_URL.txt')
+    if os.path.exists(online_file):
+        try:
+            with open(online_file, 'r', encoding='utf-8') as f:
+                u = f.read().strip()
+                if u.startswith('http'):
+                    return u
+        except Exception:
+            pass
+
+    return 'https://omatillo-jurnal.onrender.com'
+
 def get_student_home_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 Saytni ochish (Har qanday qurilmadan)", url=get_online_url())],
         [InlineKeyboardButton(text="🔄 Natijalarni yangilash", callback_data="refresh_my_report")],
         [InlineKeyboardButton(text="👤 Shaxsiy ma'lumotlarim", callback_data="my_profile")],
         [InlineKeyboardButton(text="🔑 O'qituvchi (Admin)", callback_data="btn_admin_login")],
@@ -378,6 +396,7 @@ def get_student_home_keyboard() -> InlineKeyboardMarkup:
 
 def get_unbound_welcome_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 Saytni ochish (Har qanday qurilmadan)", url=get_online_url())],
         [InlineKeyboardButton(text="🔗 O'z hisobimni biriktirish", callback_data="start_bind")],
         [InlineKeyboardButton(text="🔑 O'qituvchi (Admin)", callback_data="btn_admin_login")],
         [InlineKeyboardButton(text="ℹ️ Bot haqida", callback_data="btn_about")]
@@ -385,10 +404,12 @@ def get_unbound_welcome_keyboard() -> InlineKeyboardMarkup:
 
 def get_admin_dashboard_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🌐 Jurnal Veb-saytini ochish", url=get_online_url())],
         [InlineKeyboardButton(text="👥 Barcha guruhlar va talabalar", callback_data="admin_groups")],
         [InlineKeyboardButton(text="🔗 Biriktirilgan talabalar ro'yxati", callback_data="admin_bindings")],
         [InlineKeyboardButton(text="🚪 Admin rejimidan chiqish", callback_data="admin_logout")]
     ])
+
 
 @router.message(CommandStart())
 async def handle_start(message: Message):

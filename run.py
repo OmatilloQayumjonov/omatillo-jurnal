@@ -57,9 +57,71 @@ def run_keep_alive():
         except Exception:
             pass
 
+def get_local_ip() -> str:
+    import socket
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+def run_tunnel():
+    """Lokal kompyuterni har qanday telefon va qurilmadan kirish uchun Cloudflare HTTPS orqali internetga ulash"""
+    import subprocess
+    import re
+    import time
+
+    cf_exe = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'cloudflared.exe')
+    if not os.path.exists(cf_exe) or sys.platform != 'win32':
+        return
+
+    time.sleep(2)
+    try:
+        proc = subprocess.Popen(
+            [cf_exe, 'tunnel', '--url', 'http://localhost:5000'],
+            stderr=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            text=True,
+            encoding='utf-8',
+            errors='replace'
+        )
+
+        while True:
+            line = proc.stderr.readline()
+            if not line:
+                break
+            m = re.search(r'https://[a-zA-Z0-9-]+\.trycloudflare\.com', line)
+            if m:
+                tunnel_url = m.group(0)
+                print("\n" + "=" * 65)
+                print(f"  [JONLI INTERNET SAYT — BARCHA TELEFON VA QURILMALARDAN KIRISH]")
+                print(f"  --> {tunnel_url}")
+                print("=" * 65 + "\n")
+
+                try:
+                    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'ONLINE_URL.txt'), 'w', encoding='utf-8') as fp:
+                        fp.write(tunnel_url)
+                except Exception:
+                    pass
+
+                try:
+                    desktop = os.path.expandvars(r'%USERPROFILE%\Desktop')
+                    shortcut_path = os.path.join(desktop, 'TELEFONDA_OCHISH.url')
+                    with open(shortcut_path, 'w', encoding='utf-8') as sc:
+                        sc.write(f"[InternetShortcut]\nURL={tunnel_url}\n")
+                except Exception:
+                    pass
+                break
+    except Exception as e:
+        logger.error(f"Cloudflare tunnel ishga tushirishda xatolik: {e}")
+
 if __name__ == '__main__':
+    local_ip = get_local_ip()
     print("\n" + "=" * 65)
-    print("  ELEKTRON JURNAL & TELEGRAM BOT — 24/7 BIRLASHTIRILGAN TIZIM")
+    print("  ELEKTRON JURNAL & TELEGRAM BOT — BARCHA QURILMALAR UCHUN")
     print("=" * 65)
 
     # 1. Ma'lumotlar bazalarini ishga tushirish
@@ -67,17 +129,24 @@ if __name__ == '__main__':
     seed_default_data()
     bot.init_bot_db()
     print("  [OK] Baza (jurnal.db) va xavfsizlik jadvallari tayyor.")
+    print(f"  [OK] Kompyuterda ochish:         http://localhost:5000")
+    print(f"  [OK] Bir xil Wi-Fi dagi telefonda: http://{local_ip}:5000")
 
     # 2. Veb-sayt serverini alohida daemon оqimda ishga tushiramiz
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
 
-    # 3. Agar Render bulutida bo'lsa, uxlab qolmaslik uchun keep-alive оqimini yoqamiz
+    # 3. Internetga avtomatik tunnel ochish (agar kompyuterda bo'lsa)
+    tunnel_thread = threading.Thread(target=run_tunnel, daemon=True)
+    tunnel_thread.start()
+
+    # 4. Agar Render bulutida bo'lsa, uxlab qolmaslik uchun keep-alive оqimini yoqamiz
     keep_alive_thread = threading.Thread(target=run_keep_alive, daemon=True)
     keep_alive_thread.start()
 
-    # 4. Asosiy оqimda Telegram botni yurgizamiz
+    # 5. Asosiy оqimda Telegram botni yurgizamiz
     try:
         run_telegram_bot()
     except (KeyboardInterrupt, SystemExit):
         print("\nTizim to'liq to'xtatildi.")
+
