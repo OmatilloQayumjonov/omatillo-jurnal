@@ -1,24 +1,25 @@
 @echo off
 chcp 65001 > nul
-title Talabalar Elektron Jurnali & Telegram Bot (24/7)
+title Talabalar Elektron Jurnali va Telegram Boti (Markaziy Tizim)
 echo ===============================================================
-echo     TALABALAR ELEKTRON JURNALI VA TELEGRAM BOT (24/7)
+echo     TALABALAR ELEKTRON JURNALI VA TELEGRAM BOTI
 echo ===============================================================
 echo.
-echo Sizning tizimingiz internetda kecha-yu kunduz (24/7) ishlab turibdi!
+echo [1] Veb-sayt va Telegram bot birgalikda ishga tushirilmoqda...
 echo.
-echo 🌐 Markaziy Sayt manzili (Barcha o'zgarishlar shu yerda kiritiladi):
-echo    https://omatillo-jurnal.onrender.com
+echo 🌐 Sayt manzili:  http://localhost:5000
+echo 🤖 Telegram bot:  https://t.me/TalabaInfo_bot
+echo 🔑 Admin login:   admin
+echo 🔑 Admin parol:   admin123
 echo.
-echo 🤖 Telegram botingiz (Talabalar uchun):
-echo    https://t.me/TalabaInfo_bot
-echo.
-echo 🔑 Standart Admin login:  admin
-echo 🔑 Standart Admin parol:  admin123
-echo.
-echo Sayt brauzeringizda ochilmoqda...
-start "" "https://omatillo-jurnal.onrender.com"
-echo.
-echo [OK] Sayt ochildi! Baho va davomatlarni kiritishingiz mumkin.
-timeout /t 5 > nul
-exit
+echo Sayt brauzerda ochilmoqda...
+start "" "http://localhost:5000"
+
+where py >nul 2>nul
+if %ERRORLEVEL% EQU 0 (
+    py -3 run.py
+) else (
+    python run.py
+)
+pause
+
