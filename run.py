@@ -31,24 +31,29 @@ def run_flask():
     app.run(host=host, port=port, debug=False, use_reloader=False)
 
 def run_telegram_bot():
-    """Telegram botni asinxron ishga tushirish"""
-    try:
-        asyncio.run(bot.main())
-    except (KeyboardInterrupt, SystemExit):
-        print("Telegram bot to'xtatildi.")
+    """Telegram botni asinxron ishga tushirish (uzluksiz qayta ulanish bilan)"""
+    import time
+    while True:
+        try:
+            asyncio.run(bot.main())
+        except (KeyboardInterrupt, SystemExit):
+            print("Telegram bot to'xtatildi.")
+            break
+        except Exception as e:
+            logger.error(f"Telegram botda kutilmagan xatolik: {e}. 5 soniyadan so'ng qayta ulanadi...")
+            time.sleep(5)
 
 def run_keep_alive():
-    """Render.com da server uxlab qolmasligi uchun har 10 daqiqada o'zini-o'zi ping qilib turish"""
+    """Render.com da server uxlab qolmasligi uchun muntazam o'zini-o'zi ping qilib turish"""
     import time
     import urllib.request
-    url = os.environ.get('RENDER_EXTERNAL_URL')
-    if not url:
-        return
+    url = os.environ.get('RENDER_EXTERNAL_URL') or 'https://omatillo-jurnal.onrender.com'
     print(f"  [OK] Render 24/7 Keep-Alive faollashtirildi: {url}")
     while True:
-        time.sleep(600)
+        time.sleep(300)
         try:
-            urllib.request.urlopen(f"{url}/api/settings", timeout=15)
+            req = urllib.request.Request(f"{url}/api/settings", headers={'User-Agent': 'Render-KeepAlive/1.0'})
+            urllib.request.urlopen(req, timeout=15)
         except Exception:
             pass
 
