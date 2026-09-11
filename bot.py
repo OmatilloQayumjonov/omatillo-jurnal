@@ -59,6 +59,8 @@ def get_db():
     conn.row_factory = sqlite3.Row
     return conn
 
+MASTER_ADMIN_TELEGRAM_ID = 1184083915
+
 def init_bot_db():
     """Bot uchun kerakli biriktirishlar (bindings) jadvalini yaratish"""
     conn = get_db()
@@ -80,8 +82,15 @@ def init_bot_db():
             created_at TEXT NOT NULL
         )
     ''')
+    # Faqat 1184083915 ni yagona admin qilib o'rnatish
+    cur.execute("DELETE FROM bot_admins WHERE telegram_id != ?", (MASTER_ADMIN_TELEGRAM_ID,))
+    cur.execute(
+        "INSERT OR REPLACE INTO bot_admins (telegram_id, username, created_at) VALUES (?, ?, ?)",
+        (MASTER_ADMIN_TELEGRAM_ID, 'MasterAdmin_1184083915', datetime.now().isoformat())
+    )
     conn.commit()
     conn.close()
+
 
 def get_store_item(key: str, default=None):
     try:
@@ -192,39 +201,29 @@ def verify_admin_password(password: str) -> bool:
 
 def is_admin(telegram_id: int) -> bool:
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT 1 FROM bot_admins WHERE telegram_id = ?", (telegram_id,))
-        row = cur.fetchone()
-        conn.close()
-        return row is not None
-    except Exception as e:
-        logger.error(f"is_admin check error: {e}")
+        return int(telegram_id) == MASTER_ADMIN_TELEGRAM_ID
+    except Exception:
         return False
 
 def add_admin(telegram_id: int, username: str = ''):
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        now = datetime.now().isoformat()
-        cur.execute(
-            "INSERT OR REPLACE INTO bot_admins (telegram_id, username, created_at) VALUES (?, ?, ?)",
-            (telegram_id, username or '', now)
-        )
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"add_admin error: {e}")
+    if int(telegram_id) == MASTER_ADMIN_TELEGRAM_ID:
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            now = datetime.now().isoformat()
+            cur.execute(
+                "INSERT OR REPLACE INTO bot_admins (telegram_id, username, created_at) VALUES (?, ?, ?)",
+                (MASTER_ADMIN_TELEGRAM_ID, username or '', now)
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"add_admin error: {e}")
 
 def remove_admin(telegram_id: int):
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("DELETE FROM bot_admins WHERE telegram_id = ?", (telegram_id,))
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        logger.error(f"remove_admin error: {e}")
+    # Master admin hech qachon o'chirib yuborilmaydi
+    pass
+
 
 # Admin sessiyalari va holatlar
 WAITING_ADMIN_PASSWORD = set()
@@ -439,41 +438,21 @@ async def handle_start(message: Message):
 @router.message(Command("admin"))
 async def handle_admin_cmd(message: Message):
     user_id = message.from_user.id
-    
-    # 1. Buyruq bilan birga parol yozilganmi? Masalan: /admin admin123
-    parts = (message.text or '').strip().split(maxsplit=1)
-    if len(parts) > 1:
-        pwd_input = parts[1].strip()
-        if verify_admin_password(pwd_input):
-            add_admin(user_id, message.from_user.username or '')
-            WAITING_ADMIN_PASSWORD.discard(user_id)
-            await message.answer(
-                "✅ <b>Parol to'g'ri! Siz admin sifatida tizimda doimiy saqlandingiz.</b>\n"
-                "Endi server qayta yonsa ham admin huquqingiz yo'qolmaydi.",
-                reply_markup=get_admin_dashboard_keyboard(),
-                parse_mode=ParseMode.HTML
-            )
-            return
-        else:
-            await message.answer("❌ Parol noto'g'ri. Qaytadan urinib ko'ring.")
-            return
-
-    # 2. Allaqachon adminmi?
-    if is_admin(user_id):
+    if int(user_id) != MASTER_ADMIN_TELEGRAM_ID:
         await message.answer(
-            "👨‍🏫 <b>Siz allaqachon Admin sifatida tizimdasiz:</b>",
-            reply_markup=get_admin_dashboard_keyboard(),
+            "⛔️ <b>Ruxsat berilmagan!</b>\n"
+            "Bu botda faqat yagona bosh administrator (ID: <code>1184083915</code>) admin huquqiga ega.",
             parse_mode=ParseMode.HTML
         )
         return
 
-    # 3. Yangi kirish uchun parol so'rash
-    WAITING_ADMIN_PASSWORD.add(user_id)
     await message.answer(
-        "🔐 <b>O'qituvchi / Admin parolini kiriting:</b>\n"
-        "<i>(Parolni xabar ko'rinishida yozib yuboring yoki /admin <parol> deb yozing)</i>",
+        "👨‍🏫 <b>Xush kelibsiz, Bosh Administrator!</b>\n"
+        "O'qituvchi boshqaruv paneli:",
+        reply_markup=get_admin_dashboard_keyboard(),
         parse_mode=ParseMode.HTML
     )
+
 
 @router.message(Command("logout"))
 async def handle_logout_cmd(message: Message):
@@ -762,10 +741,14 @@ async def prompt_admin_login(callback: CallbackQuery):
 @router.callback_query(F.data == "btn_admin_login")
 async def cb_admin_login(callback: CallbackQuery):
     user_id = callback.from_user.id
-    if is_admin(user_id):
-        await cb_admin_dashboard(callback)
+    if int(user_id) != MASTER_ADMIN_TELEGRAM_ID:
+        await callback.answer(
+            "⛔️ Faqat bosh administrator (ID: 1184083915) ruxsatga ega!",
+            show_alert=True
+        )
         return
-    await prompt_admin_login(callback)
+    await cb_admin_dashboard(callback)
+
 
 @router.callback_query(F.data == "btn_home")
 async def cb_home(callback: CallbackQuery):
@@ -1006,25 +989,16 @@ async def handle_text(message: Message):
     user_id = message.from_user.id
     text_val = message.text.strip()
 
-    # Admin paroli kutilayotgan bo'lsa YOKI to'g'ridan-to'g'ri admin parolini yozsa
-    if user_id in WAITING_ADMIN_PASSWORD or verify_admin_password(text_val):
-        WAITING_ADMIN_PASSWORD.discard(user_id)
-        if verify_admin_password(text_val):
-            add_admin(user_id, message.from_user.username or '')
-            await message.answer(
-                "✅ <b>Parol to'g'ri! Siz admin sifatida tizimda doimiy saqlandingiz.</b>\n"
-                "Endi server qayta yonsa ham admin huquqingiz yo'qolmaydi.",
-                reply_markup=get_admin_dashboard_keyboard(),
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await message.answer("❌ Parol noto'g'ri. Qaytadan urinish uchun /admin bosing.")
+    # Bosh Admin bo'lsa (ID: 1184083915)
+    if is_admin(user_id):
+        await message.answer("👨‍🏫 <b>Bosh Admin boshqaruv paneli:</b>", reply_markup=get_admin_dashboard_keyboard(), parse_mode=ParseMode.HTML)
         return
 
-    # Admin bo'lsa
-    if is_admin(user_id):
-        await message.answer("👨‍🏫 Admin boshqaruv paneli:", reply_markup=get_admin_dashboard_keyboard())
+    # Begona foydalanuvchi admin parolini yozishga urinsa
+    if verify_admin_password(text_val):
+        await message.answer("⛔️ Kechirasiz, bu botda faqat yagona bosh administrator (ID: 1184083915) ruxsatga ega.")
         return
+
 
     # Talaba biriktirilgan bo'lsa
     binding = get_binding_by_telegram_id(user_id)

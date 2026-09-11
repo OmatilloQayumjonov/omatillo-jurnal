@@ -4,6 +4,11 @@
  * 15 ta amaliy dars va Alohida Mustaqil Ishlar
  */
 
+const API_BASE = (window.location.protocol === 'file:' || !window.location.origin || window.location.origin === 'null')
+  ? 'http://localhost:5000'
+  : '';
+window.API_BASE = API_BASE;
+
 const STORAGE_KEYS = {
   AUTH_TOKEN: 'jurnal_auth_token',
   AUTH_USER: 'jurnal_auth_user',
@@ -81,7 +86,7 @@ class JurnalStorage {
   async syncFromServer() {
     try {
       const token = this.token || localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) || 'admin_direct_master_token';
-      const res = await fetch('/api/data', {
+      const res = await fetch(`${API_BASE}/api/data`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
 
@@ -116,7 +121,7 @@ class JurnalStorage {
   async saveToServer(key, value) {
     try {
       const token = this.token || localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) || 'admin_direct_master_token';
-      const res = await fetch('/api/save-key', {
+      const res = await fetch(`${API_BASE}/api/save-key`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -164,7 +169,7 @@ class JurnalStorage {
       };
 
       const token = this.token || localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) || 'admin_direct_master_token';
-      const res = await fetch('/api/save-all', {
+      const res = await fetch(`${API_BASE}/api/save-all`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -172,6 +177,7 @@ class JurnalStorage {
         },
         body: JSON.stringify({ data: allData })
       });
+
 
       if (res.ok) {
         this.isServerConnected = true;

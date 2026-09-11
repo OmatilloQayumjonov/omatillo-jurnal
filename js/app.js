@@ -1297,9 +1297,11 @@ class JurnalApp {
     // 1. Agar token mavjud bo'lsa, server orqali tekshiramiz
     if (token) {
       try {
-        const res = await fetch('/api/auth/verify', {
+        const apiBase = window.API_BASE || '';
+        const res = await fetch(`${apiBase}/api/auth/verify`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
+
         if (res.ok) {
           const json = await res.json();
           if (json.authenticated) {
@@ -1371,11 +1373,13 @@ class JurnalApp {
     }
 
     try {
-      const res = await fetch('/api/auth/login', {
+      const apiBase = window.API_BASE || '';
+      const res = await fetch(`${apiBase}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
+
 
       const json = await res.json();
 
@@ -1478,7 +1482,8 @@ class JurnalApp {
 
     if (token) {
       try {
-        const res = await fetch('/api/auth/change-password', {
+        const apiBase = window.API_BASE || '';
+        const res = await fetch(`${apiBase}/api/auth/change-password`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1489,6 +1494,7 @@ class JurnalApp {
             new_password: newPassword
           })
         });
+
 
         const json = await res.json();
         if (res.ok && json.success) {

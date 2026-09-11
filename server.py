@@ -17,6 +17,17 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app = Flask(__name__, static_folder=BASE_DIR)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS, PUT, DELETE'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization'
+    return response
+
+@app.route('/api/<path:path>', methods=['OPTIONS'])
+def handle_options(path):
+    return '', 200
+
 DB_FILE = os.path.join(BASE_DIR, 'jurnal.db')
 
 def get_db():
@@ -56,6 +67,14 @@ def init_db():
         cur.execute(
             "INSERT INTO users (username, password_hash) VALUES (?, ?)",
             ('admin', hash_password('admin123'))
+        )
+
+    # 1184083915 Telegram ID si uchun alohida Admin hisobi
+    cur.execute("SELECT * FROM users WHERE username = '1184083915'")
+    if not cur.fetchone():
+        cur.execute(
+            "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+            ('1184083915', hash_password('admin123'))
         )
 
     # 2. Kalit-qiymat ma'lumotlar jadvali (Talabalar, Davomat, Baholar, Mustaqil ish)
@@ -239,7 +258,7 @@ def api_login():
     return jsonify({
         'success': True,
         'token': token,
-        'username': 'admin',
+        'username': user['username'],
         'message': "Muvaffaqiyatli tizimga kirdingiz!"
     })
 
