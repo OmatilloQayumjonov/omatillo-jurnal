@@ -383,7 +383,7 @@ def get_online_url() -> str:
         except Exception:
             pass
 
-    return 'https://omatillo-jurnal.onrender.com'
+    return 'https://omatillo-jurnal-qhx7.onrender.com'
 
 def get_student_home_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[

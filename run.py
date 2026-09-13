@@ -47,7 +47,7 @@ def run_keep_alive():
     """Render.com da server uxlab qolmasligi uchun muntazam o'zini-o'zi ping qilib turish"""
     import time
     import urllib.request
-    url = os.environ.get('RENDER_EXTERNAL_URL') or 'https://omatillo-jurnal.onrender.com'
+    url = os.environ.get('RENDER_EXTERNAL_URL') or 'https://omatillo-jurnal-qhx7.onrender.com'
     print(f"  [OK] Render 24/7 Keep-Alive faollashtirildi: {url}")
     while True:
         time.sleep(300)
