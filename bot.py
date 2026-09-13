@@ -369,21 +369,10 @@ def build_student_report(student_id: str) -> Optional[str]:
 router = Router()
 
 def get_online_url() -> str:
-    render_url = os.environ.get('RENDER_EXTERNAL_URL')
-    if render_url:
-        return render_url
-
-    online_file = os.path.join(BASE_DIR, 'ONLINE_URL.txt')
-    if os.path.exists(online_file):
-        try:
-            with open(online_file, 'r', encoding='utf-8') as f:
-                u = f.read().strip()
-                if u.startswith('http'):
-                    return u
-        except Exception:
-            pass
-
-    return 'https://omatillo-jurnal-qhx7.onrender.com'
+    custom_url = os.environ.get('CUSTOM_DOMAIN_URL', '').strip()
+    if custom_url:
+        return custom_url
+    return 'https://omatillo.uz'
 
 def get_student_home_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
