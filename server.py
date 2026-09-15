@@ -115,58 +115,15 @@ def seed_default_data():
             {"id": "col_mi_3", "title": "3-Mustaqil ish", "description": "Taqdimot va loyiha", "maxScore": 5}
         ]
 
-        # Namunaviy talabalar
-        demo_students = [
-            {"id": "st_1", "fullName": "Aliyev Behruz Shavkatovich", "group": "401-guruh", "phone": "+998 90 123 45 67", "note": "A'lochi"},
-            {"id": "st_2", "fullName": "Karimova Madina Anvarovna", "group": "401-guruh", "phone": "+998 91 234 56 78", "note": "Guruh sardori"},
-            {"id": "st_3", "fullName": "Toshmatov Jasur Ilhom o‘g‘li", "group": "401-guruh", "phone": "+998 93 345 67 89", "note": ""},
-            {"id": "st_4", "fullName": "Yusupova Shahzoda Baxtiyor qizi", "group": "401-guruh", "phone": "+998 94 456 78 90", "note": "Faol"},
-            {"id": "st_5", "fullName": "Rustamov Sardor Otabekovich", "group": "401-guruh", "phone": "+998 97 567 89 01", "note": ""},
-            {"id": "st_6", "fullName": "Nazarova Gulnoza Rustamovna", "group": "402-guruh", "phone": "+998 99 678 90 12", "note": ""},
-            {"id": "st_7", "fullName": "Qodirov Farrux Dilmurodovich", "group": "402-guruh", "phone": "+998 90 789 01 23", "note": ""},
-            {"id": "st_8", "fullName": "Saidova Zarina Sherzod qizi", "group": "402-guruh", "phone": "+998 91 890 12 34", "note": "A'lochi"},
-            {"id": "st_9", "fullName": "Hamroyev Diyorbek Jamshid o‘g‘li", "group": "402-guruh", "phone": "+998 93 901 23 45", "note": ""},
-            {"id": "st_10", "fullName": "Ergasheva Kamola Azizovna", "group": "402-guruh", "phone": "+998 94 012 34 56", "note": ""}
-        ]
-
         now = datetime.now().isoformat()
         store_items = {
-            'students': json.dumps(demo_students),
-            'groups': json.dumps(['401-guruh', '402-guruh']),
+            'students': json.dumps([]),
+            'groups': json.dumps([]),
             'grade_columns': json.dumps(cols_15),
-            'grades': json.dumps({
-                "st_1": {"col_amaliy_1": 5, "col_amaliy_2": 5, "col_amaliy_3": 5, "col_amaliy_4": 5, "col_amaliy_5": 5},
-                "st_2": {"col_amaliy_1": 5, "col_amaliy_2": 4, "col_amaliy_3": 5, "col_amaliy_4": 4, "col_amaliy_5": 5},
-                "st_3": {"col_amaliy_1": 4, "col_amaliy_2": 3, "col_amaliy_3": 4, "col_amaliy_4": 4, "col_amaliy_5": 3},
-                "st_4": {"col_amaliy_1": 5, "col_amaliy_2": 5, "col_amaliy_3": 4, "col_amaliy_4": 5, "col_amaliy_5": 5},
-                "st_5": {"col_amaliy_1": 3, "col_amaliy_2": 3, "col_amaliy_3": 2, "col_amaliy_4": 3, "col_amaliy_5": 3}
-            }),
+            'grades': json.dumps({}),
             'mustaqil_columns': json.dumps(mustaqil_cols),
-            'mustaqil_grades': json.dumps({
-                "st_1": {"col_mi_1": 5, "col_mi_2": 5, "col_mi_3": 5},
-                "st_2": {"col_mi_1": 5, "col_mi_2": 4, "col_mi_3": 5},
-                "st_3": {"col_mi_1": 4, "col_mi_2": 3, "col_mi_3": 4},
-                "st_4": {"col_mi_1": 5, "col_mi_2": 5, "col_mi_3": 4},
-                "st_5": {"col_mi_1": 3, "col_mi_2": 3, "col_mi_3": 2}
-            }),
-            'attendance': json.dumps([
-                {
-                    "id": "att_demo_1",
-                    "date": "2026-09-02",
-                    "group": "401-guruh",
-                    "lessonType": "Amaliyot",
-                    "lessonTheme": "1-amaliy mashg'ulot",
-                    "records": {"st_1": "present", "st_2": "present", "st_3": "present", "st_4": "present", "st_5": "present"}
-                },
-                {
-                    "id": "att_demo_2",
-                    "date": "2026-09-09",
-                    "group": "401-guruh",
-                    "lessonType": "Amaliyot",
-                    "lessonTheme": "2-amaliy mashg'ulot",
-                    "records": {"st_1": "present", "st_2": "present", "st_3": "absent", "st_4": "present", "st_5": "excused"}
-                }
-            ]),
+            'mustaqil_grades': json.dumps({}),
+            'attendance': json.dumps([]),
             'settings': json.dumps({
                 "gradingSystem": "5",
                 "institutionName": "O'quv yurti",

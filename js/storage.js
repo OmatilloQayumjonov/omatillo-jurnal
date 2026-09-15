@@ -29,7 +29,7 @@ const DEFAULT_SETTINGS = {
   semester: 'Kuzgi semestr 2026'
 };
 
-const DEFAULT_GROUPS = ['401-guruh', '402-guruh'];
+const DEFAULT_GROUPS = [];
 
 function generate15PracticalColumns() {
   const cols = [];
@@ -52,18 +52,7 @@ const DEFAULT_MUSTAQIL_COLUMNS = [
   { id: 'col_mi_3', title: '3-Mustaqil ish', description: "Taqdimot va loyiha himoyasi", maxScore: 5 }
 ];
 
-const DEMO_STUDENTS = [
-  { id: 'st_1', fullName: 'Aliyev Behruz Shavkatovich', group: '401-guruh', phone: '+998 90 123 45 67', note: "A'lochi" },
-  { id: 'st_2', fullName: 'Karimova Madina Anvarovna', group: '401-guruh', phone: '+998 91 234 56 78', note: 'Guruh sardori' },
-  { id: 'st_3', fullName: 'Toshmatov Jasur Ilhom o‘g‘li', group: '401-guruh', phone: '+998 93 345 67 89', note: '' },
-  { id: 'st_4', fullName: 'Yusupova Shahzoda Baxtiyor qizi', group: '401-guruh', phone: '+998 94 456 78 90', note: 'Faol' },
-  { id: 'st_5', fullName: 'Rustamov Sardor Otabekovich', group: '401-guruh', phone: '+998 97 567 89 01', note: '' },
-  { id: 'st_6', fullName: 'Nazarova Gulnoza Rustamovna', group: '402-guruh', phone: '+998 99 678 90 12', note: '' },
-  { id: 'st_7', fullName: 'Qodirov Farrux Dilmurodovich', group: '402-guruh', phone: '+998 90 789 01 23', note: '' },
-  { id: 'st_8', fullName: 'Saidova Zarina Sherzod qizi', group: '402-guruh', phone: '+998 91 890 12 34', note: "A'lochi" },
-  { id: 'st_9', fullName: 'Hamroyev Diyorbek Jamshid o‘g‘li', group: '402-guruh', phone: '+998 93 901 23 45', note: '' },
-  { id: 'st_10', fullName: 'Ergasheva Kamola Azizovna', group: '402-guruh', phone: '+998 94 012 34 56', note: '' }
-];
+const DEMO_STUDENTS = [];
 
 class JurnalStorage {
   constructor() {
@@ -73,13 +62,34 @@ class JurnalStorage {
   }
 
   async init() {
-    // Agar dastur birinchi marta ochilayotgan bo'lsa, zaxira sifatida demo ma'lumotlar qo'yiladi
-    if (!localStorage.getItem(STORAGE_KEYS.STUDENTS)) {
-      this.loadLocalDemoData();
-    }
-
-    // Server bilan bog'lanish va bazadan so'nggi ma'lumotlarni yuklab olish
+    // 1. Har doim birinchi bo'lib markaziy serverdan so'nggi ma'lumotlarni yuklab olamiz
     await this.syncFromServer();
+
+    // 2. Agar lokal xotira bo'sh bo'lsa, xatolik chiqmasligi uchun bo'sh tuzilmani yaratib qo'yamiz (lekin serverga yuklamaymiz!)
+    if (!localStorage.getItem(STORAGE_KEYS.GRADE_COLUMNS)) {
+      localStorage.setItem(STORAGE_KEYS.GRADE_COLUMNS, JSON.stringify(DEMO_GRADE_COLUMNS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.MUSTAQIL_COLUMNS)) {
+      localStorage.setItem(STORAGE_KEYS.MUSTAQIL_COLUMNS, JSON.stringify(DEFAULT_MUSTAQIL_COLUMNS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.SETTINGS)) {
+      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.STUDENTS)) {
+      localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.GROUPS)) {
+      localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.ATTENDANCE)) {
+      localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify([]));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.GRADES)) {
+      localStorage.setItem(STORAGE_KEYS.GRADES, JSON.stringify({}));
+    }
+    if (!localStorage.getItem(STORAGE_KEYS.MUSTAQIL_GRADES)) {
+      localStorage.setItem(STORAGE_KEYS.MUSTAQIL_GRADES, JSON.stringify({}));
+    }
   }
 
   // Server API dan barcha ma'lumotlarni tortib olish
@@ -96,14 +106,35 @@ class JurnalStorage {
           const d = json.data;
           this.isServerConnected = true;
 
-          if (d.students) localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(d.students));
-          if (d.groups) localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(d.groups));
-          if (d.attendance) localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(d.attendance));
-          if (d.grade_columns) localStorage.setItem(STORAGE_KEYS.GRADE_COLUMNS, JSON.stringify(d.grade_columns));
-          if (d.grades) localStorage.setItem(STORAGE_KEYS.GRADES, JSON.stringify(d.grades));
-          if (d.mustaqil_columns) localStorage.setItem(STORAGE_KEYS.MUSTAQIL_COLUMNS, JSON.stringify(d.mustaqil_columns));
-          if (d.mustaqil_grades) localStorage.setItem(STORAGE_KEYS.MUSTAQIL_GRADES, JSON.stringify(d.mustaqil_grades));
-          if (d.settings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(d.settings));
+          const localStudents = this.getStudents();
+          const serverStudents = Array.isArray(d.students) ? d.students : [];
+
+          // Agar serverda talabalar bo'lsa, serverdagi asosiy deb olinadi
+          if (serverStudents.length > 0) {
+            localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(serverStudents));
+            if (d.groups) localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(d.groups));
+            if (d.attendance) localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(d.attendance));
+            if (d.grade_columns) localStorage.setItem(STORAGE_KEYS.GRADE_COLUMNS, JSON.stringify(d.grade_columns));
+            if (d.grades) localStorage.setItem(STORAGE_KEYS.GRADES, JSON.stringify(d.grades));
+            if (d.mustaqil_columns) localStorage.setItem(STORAGE_KEYS.MUSTAQIL_COLUMNS, JSON.stringify(d.mustaqil_columns));
+            if (d.mustaqil_grades) localStorage.setItem(STORAGE_KEYS.MUSTAQIL_GRADES, JSON.stringify(d.mustaqil_grades));
+            if (d.settings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(d.settings));
+          } else if (localStudents.length > 0) {
+            // Server bo'sh, lekin ushbu brauzerda kiritilgan haqiqiy talabalar bo'lsa:
+            // Lokal ma'lumotlarni darhol serverga tiklaymiz!
+            console.log("Server bo'sh, lokal ma'lumotlar serverga qayta yuklanmoqda...");
+            await this.uploadAllLocalToServer();
+          } else {
+            // Ikkalasi ham bo'sh
+            if (d.students) localStorage.setItem(STORAGE_KEYS.STUDENTS, JSON.stringify(d.students));
+            if (d.groups) localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(d.groups));
+            if (d.attendance) localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(d.attendance));
+            if (d.grade_columns) localStorage.setItem(STORAGE_KEYS.GRADE_COLUMNS, JSON.stringify(d.grade_columns));
+            if (d.grades) localStorage.setItem(STORAGE_KEYS.GRADES, JSON.stringify(d.grades));
+            if (d.mustaqil_columns) localStorage.setItem(STORAGE_KEYS.MUSTAQIL_COLUMNS, JSON.stringify(d.mustaqil_columns));
+            if (d.mustaqil_grades) localStorage.setItem(STORAGE_KEYS.MUSTAQIL_GRADES, JSON.stringify(d.mustaqil_grades));
+            if (d.settings) localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(d.settings));
+          }
 
           this.updateConnectionBadge(true);
           return true;
@@ -115,6 +146,34 @@ class JurnalStorage {
       this.updateConnectionBadge(false);
     }
     return false;
+  }
+
+  async uploadAllLocalToServer() {
+    const allData = {
+      students: this.getStudents(),
+      groups: this.getGroups(),
+      attendance: this.getAttendance(),
+      grade_columns: this.getGradeColumns(),
+      grades: this.getGrades(),
+      mustaqil_columns: this.getMustaqilColumns(),
+      mustaqil_grades: this.getMustaqilGrades(),
+      settings: this.getSettings()
+    };
+    try {
+      const token = this.token || localStorage.getItem(STORAGE_KEYS.AUTH_TOKEN) || 'admin_direct_master_token';
+      const res = await fetch(`${API_BASE}/api/save-all`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ data: allData })
+      });
+      return res.ok;
+    } catch (e) {
+      console.error("uploadAllLocalToServer xatosi:", e);
+      return false;
+    }
   }
 
   // O'zgarishlarni serverga saqlash (Har qanday o'zgarishda darhol bazaga yoziladi)
@@ -252,20 +311,18 @@ class JurnalStorage {
   }
 
   loadLocalDemoData() {
-    this.saveStudents(DEMO_STUDENTS);
-    this.saveGroups(DEFAULT_GROUPS);
+    this.saveStudents([]);
+    this.saveGroups([]);
     this.saveGradeColumns(DEMO_GRADE_COLUMNS);
-    this.saveGrades({
-      st_1: { col_amaliy_1: 5, col_amaliy_2: 5, col_amaliy_3: 5 },
-      st_2: { col_amaliy_1: 5, col_amaliy_2: 4, col_amaliy_3: 5 }
-    });
+    this.saveGrades({});
     this.saveMustaqilColumns(DEFAULT_MUSTAQIL_COLUMNS);
-    this.saveMustaqilGrades({
-      st_1: { col_mi_1: 5, col_mi_2: 5, col_mi_3: 5 },
-      st_2: { col_mi_1: 5, col_mi_2: 4, col_mi_3: 5 }
-    });
+    this.saveMustaqilGrades({});
     this.saveAttendance([]);
     this.saveSettings(DEFAULT_SETTINGS);
+  }
+
+  loadDemoData() {
+    this.loadLocalDemoData();
   }
 
   // --- TALABALAR ---
